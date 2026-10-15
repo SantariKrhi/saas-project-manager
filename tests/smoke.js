@@ -136,6 +136,9 @@ const login = async (company, email) =>
     const created = await call(A, 'POST', '/api/users', { email: 'carl@acme.test', password: 'motdepasse1', firstName: 'Carl', lastName: 'Acme' });
     assert.equal(created.status, 201);
     extra = created.body;
+    const extraToken = (await call(null, 'POST', '/api/auth/login', { company: 'acme', email: 'carl@acme.test', password: 'motdepasse1' })).body.token;
+    assert.equal((await call(extraToken, 'GET', '/api/projects')).status, 200);
+    extra.token = extraToken;
     extraProject = (await call(A, 'POST', '/api/projects', { name: 'Cascade', memberIds: [extra._id] })).body;
     const t = (await call(A, 'POST', `/api/projects/${extraProject._id}/tasks`, { title: 'à Carl', assigneeId: extra._id })).body;
     await call(A, 'PUT', `/api/projects/${extraProject._id}/members`, { memberIds: [] });
@@ -144,6 +147,7 @@ const login = async (company, email) =>
     await call(A, 'PATCH', `/api/tasks/${t._id}`, { assigneeId: extra._id });
     // Suppression de l'utilisateur : retiré des projets et désassigné.
     assert.equal((await call(A, 'DELETE', `/api/users/${extra._id}`)).status, 204);
+    assert.equal((await call(extra.token, 'GET', '/api/projects')).status, 401, 'token d\'un utilisateur supprimé');
     assert.equal((await call(A, 'GET', `/api/tasks/${t._id}`)).body.assigneeId, null);
     assert.ok(!(await call(A, 'GET', `/api/projects/${extraProject._id}`)).body.memberIds.includes(extra._id));
   });
@@ -158,7 +162,7 @@ const login = async (company, email) =>
     const p = (await call(T, 'POST', '/api/projects', { name: 'p' })).body;
     assert.equal((await call(T, 'DELETE', '/api/company', {})).status, 400);
     assert.equal((await call(T, 'DELETE', '/api/company', { confirm: reg.company.slug })).status, 204);
-    assert.equal((await call(T, 'GET', `/api/projects/${p._id}`)).status, 404);
+    assert.equal((await call(T, 'GET', `/api/projects/${p._id}`)).status, 401); // l'utilisateur n'existe plus
   });
 
   // Nettoyage de la tâche de test

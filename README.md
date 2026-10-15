@@ -79,4 +79,4 @@ node tests/smoke.js
 Fait : connexion MongoDB configurable, validators et index, seed, authentification JWT,
 CRUD entreprise / utilisateurs / projets / tâches, board Kanban, commentaires, cascades, tests d'isolation,
 interface web (login, projets, Kanban en drag & drop, gestion de l'équipe).
-À faire : spécifications technique et fonctionnelle, relecture finale du README.
+Spécifications : `docs/spec-technique.md` et `docs/spec-fonctionnelle.md`.
