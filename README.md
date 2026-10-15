@@ -34,6 +34,21 @@ docker compose down -v
 - `docs/spec-technique.md` : architecture de la base et structures JSON
 - `docs/spec-fonctionnelle.md` : fonctionnalités
 
+## Comptes de démo
+
+Mot de passe commun : `demo1234`
+
+| Entreprise (slug) | Admin | Membre |
+|---|---|---|
+| `acme` | admin@acme.test | bob@acme.test |
+| `globex` | admin@globex.test | bob@globex.test |
+
+```bash
+curl -X POST localhost:3000/api/auth/login -H "Content-Type: application/json"   -d '{"company":"acme","email":"admin@acme.test","password":"demo1234"}'
+```
+
 ## État d'avancement
 
-Squelette : API `/api/health`, connexion MongoDB configurable, init des collections et index.
+Fait : connexion MongoDB configurable, validators et index, seed de démo, authentification JWT
+(`/api/auth/register-company`, `/login`, `/me`).
+À faire : CRUD utilisateurs / projets / tâches, Kanban, spécifications.
