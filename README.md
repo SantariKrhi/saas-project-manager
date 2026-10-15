@@ -10,7 +10,8 @@ Prérequis : Docker et Docker Compose uniquement.
 docker compose up -d --build
 ```
 
-- API : http://localhost:3000/api/health
+- Interface web : http://localhost:3000
+- API : http://localhost:3000/api (santé : `/api/health`)
 
 ## Configuration
 
@@ -76,5 +77,6 @@ node tests/smoke.js
 ## État d'avancement
 
 Fait : connexion MongoDB configurable, validators et index, seed, authentification JWT,
-CRUD entreprise / utilisateurs / projets / tâches, board Kanban, commentaires, cascades, tests d'isolation.
-À faire : interface web (Kanban), spécifications technique et fonctionnelle.
+CRUD entreprise / utilisateurs / projets / tâches, board Kanban, commentaires, cascades, tests d'isolation,
+interface web (login, projets, Kanban en drag & drop, gestion de l'équipe).
+À faire : spécifications technique et fonctionnelle, relecture finale du README.

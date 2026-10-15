@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const config = require('./config');
 const { connect, getDb } = require('./db');
@@ -23,6 +24,9 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api', require('./routes/tasks'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Route inconnue' }));
+
+// Interface web (fichiers statiques, sans étape de build)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Express 5 transmet automatiquement les erreurs des handlers async à ce middleware.
 app.use((err, req, res, next) => {
