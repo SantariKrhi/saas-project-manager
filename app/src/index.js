@@ -3,6 +3,7 @@ const express = require('express');
 const config = require('./config');
 const { connect, getDb } = require('./db');
 const { seed } = require('./seed');
+const { ensureIndexes } = require('./indexes');
 const { HttpError } = require('./lib/http');
 
 const app = express();
@@ -22,6 +23,7 @@ app.use('/api/company', require('./routes/company'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api', require('./routes/tasks'));
+app.use('/api', require('./routes/insights'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Route inconnue' }));
 
@@ -32,12 +34,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use((err, req, res, next) => {
   if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON invalide' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop volumineux (10 Mo maximum)' });
   console.error(err);
   res.status(500).json({ error: 'Erreur interne' });
 });
 
 connect()
-  .then(seed)
+  .then(async (db) => { await ensureIndexes(db); await seed(db); })
   .then(() => app.listen(config.port, () => console.log(`API sur le port ${config.port}`)))
   .catch((err) => {
     console.error(err);

@@ -1,5 +1,5 @@
 // Exécuté automatiquement au premier démarrage de Mongo (volume vide).
-// Crée les collections avec leurs validators $jsonSchema, puis les index.
+// Crée les collections avec leurs validators $jsonSchema.
 // Pour rejouer : docker compose down -v
 const database = db.getSiblingDB('saas');
 
@@ -66,8 +66,46 @@ const schemas = {
           },
         },
       },
+      checklist: {
+        bsonType: 'array',
+        items: {
+          bsonType: 'object',
+          required: ['_id', 'text', 'done'],
+          properties: { _id: { bsonType: 'objectId' }, text: { bsonType: 'string', minLength: 1 }, done: { bsonType: 'bool' } },
+        },
+      },
+      // Métadonnées des pièces jointes ; le contenu est dans GridFS (attachments.files / attachments.chunks)
+      attachments: {
+        bsonType: 'array',
+        items: {
+          bsonType: 'object',
+          required: ['_id', 'name', 'size', 'contentType', 'uploadedBy', 'at'],
+          properties: {
+            _id: { bsonType: 'objectId' },
+            name: { bsonType: 'string' },
+            size: { bsonType: ['int', 'long', 'double'] },
+            contentType: { bsonType: 'string' },
+            uploadedBy: { bsonType: 'objectId' },
+            at: { bsonType: 'date' },
+          },
+        },
+      },
+      completedAt: { bsonType: ['date', 'null'] },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },
+    },
+  },
+  // Journal d'activité (purgé automatiquement par un index TTL sur `at`)
+  activities: {
+    bsonType: 'object',
+    required: ['companyId', 'projectId', 'userId', 'type', 'at'],
+    properties: {
+      companyId: { bsonType: 'objectId' },
+      projectId: { bsonType: 'objectId' },
+      userId: { bsonType: 'objectId' },
+      type: { bsonType: 'string' },
+      data: { bsonType: 'object' },
+      at: { bsonType: 'date' },
     },
   },
 };
@@ -76,8 +114,4 @@ Object.entries(schemas).forEach(([name, schema]) => {
   database.createCollection(name, { validator: { $jsonSchema: schema } });
 });
 
-// Index (isolation multi-tenant : companyId toujours en préfixe)
-database.companies.createIndex({ slug: 1 }, { unique: true });
-database.users.createIndex({ companyId: 1, email: 1 }, { unique: true });
-database.projects.createIndex({ companyId: 1, _id: 1 });
-database.tasks.createIndex({ companyId: 1, projectId: 1, status: 1, position: 1 });
+// Les index sont créés par l'application au démarrage (app/src/indexes.js), y compris sur une base existante.

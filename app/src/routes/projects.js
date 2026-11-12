@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { repo } = require('../repositories');
 const { isAdmin, loadProject } = require('../lib/access');
+const { logActivity } = require('../lib/activity');
 const { HttpError, notFound, badRequest, idParam, toId, isStr } = require('../lib/http');
 
 const router = express.Router();
@@ -66,6 +67,7 @@ router.post('/', requireAdmin, async (req, res) => {
   if (!members.some((m) => m.equals(req.auth.userId))) members.push(req.auth.userId);
   const project = await repo(req).projects.create({ name: name.trim(), description,
     columns: parseColumns(columns), memberIds: members, createdBy: req.auth.userId });
+  await logActivity(req, project._id, 'project.created', { name: project.name });
   res.status(201).json(project);
 });
 
@@ -88,13 +90,20 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   }
   if (!Object.keys(set).length) throw badRequest('Aucun champ à modifier');
   if (renames.length) await repo(req).tasks.renameStatuses(project._id, renames);
-  res.json(await repo(req).projects.update(project._id, set));
+  const updated = await repo(req).projects.update(project._id, set);
+  const changed = Object.keys(set).filter((k) => JSON.stringify(set[k]) !== JSON.stringify(project[k]));
+  if (changed.length) await logActivity(req, project._id, 'project.updated', { name: updated.name, fields: changed });
+  res.json(updated);
 });
 
 router.put('/:id/members', requireAdmin, async (req, res) => {
   const project = await loadProject(req, req.params.id);
   const members = await parseMemberIds(req, (req.body || {}).memberIds);
-  res.json(await repo(req).projects.setMembers(project, members));
+  const updated = await repo(req).projects.setMembers(project, members);
+  const added = members.filter((m) => !project.memberIds.some((o) => o.equals(m))).length;
+  const removed = project.memberIds.filter((o) => !members.some((m) => m.equals(o))).length;
+  if (added || removed) await logActivity(req, project._id, 'project.members', { name: project.name, added, removed });
+  res.json(updated);
 });
 
 router.delete('/:id', requireAdmin, async (req, res) => {

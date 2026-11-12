@@ -16,6 +16,21 @@ async function call(token, method, path, body) {
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+// Envoi d'un fichier brut (pièces jointes GridFS)
+async function upload(token, taskId, content, name, type = 'text/plain') {
+  const res = await fetch(`${BASE}/api/tasks/${taskId}/attachments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(name), 'X-File-Type': type },
+    body: content,
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+async function download(token, fileId) {
+  const res = await fetch(`${BASE}/api/attachments/${fileId}`, { headers: { Authorization: `Bearer ${token}` } });
+  return { status: res.status, text: await res.text(), headers: res.headers };
+}
+
 async function test(name, fn) {
   try {
     await fn();
@@ -36,7 +51,7 @@ const login = async (company, email) =>
   const globexAdmin = await login('globex', 'admin@globex.test');
   const A = acmeAdmin.token, B = acmeBob.token, G = globexAdmin.token;
 
-  const acmeProject = (await call(A, 'GET', '/api/projects')).body[0];
+  const acmeProject = (await call(A, 'GET', '/api/projects')).body.find((p) => p.name.startsWith('Projet démo'));
   const globexProject = (await call(G, 'GET', '/api/projects')).body[0];
   const globexTask = (await call(G, 'GET', `/api/projects/${globexProject._id}/tasks`)).body[0];
   const globexUser = (await call(G, 'GET', '/api/users')).body[0];
@@ -147,6 +162,108 @@ const login = async (company, email) =>
     // Fusion dans une colonne conservée : refusée
     assert.equal((await call(A, 'PATCH', `/api/projects/${p._id}`, { columns: ['b'], renamedColumns: [{ from: 'À faire', to: 'b' }] })).status, 400);
     await call(A, 'DELETE', `/api/projects/${p._id}`);
+  });
+
+  console.log('Checklist');
+  await test('ajout, cochage ciblé (arrayFilters) et suppression d\'éléments', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Avec checklist' })).body;
+    await call(B, 'POST', `/api/tasks/${t._id}/checklist`, { text: 'Étape 1' });
+    const withTwo = (await call(B, 'POST', `/api/tasks/${t._id}/checklist`, { text: 'Étape 2' })).body;
+    assert.equal(withTwo.checklist.length, 2);
+    const [first, second] = withTwo.checklist;
+    const checked = (await call(B, 'PATCH', `/api/tasks/${t._id}/checklist/${second._id}`, { done: true })).body;
+    assert.deepEqual(checked.checklist.map((i) => i.done), [false, true]);
+    assert.equal((await call(B, 'PATCH', `/api/tasks/${t._id}/checklist/${second._id}`, { done: 'oui' })).status, 400);
+    const removed = (await call(B, 'DELETE', `/api/tasks/${t._id}/checklist/${first._id}`)).body;
+    assert.deepEqual(removed.checklist.map((i) => i.text), ['Étape 2']);
+    assert.equal((await call(G, 'POST', `/api/tasks/${t._id}/checklist`, { text: 'intrus' })).status, 404);
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+  });
+
+  console.log('Mes tâches');
+  await test('uniquement les tâches assignées, enrichies du projet, non terminées d\'abord', async () => {
+    const mine = (await call(B, 'GET', '/api/me/tasks')).body;
+    assert.ok(mine.length > 0);
+    assert.ok(mine.every((t) => t.assigneeId === acmeBob.user.id && t.companyId === acmeBob.user.companyId));
+    assert.ok(mine.every((t) => typeof t.project.name === 'string'));
+    const firstDone = mine.findIndex((t) => t.done);
+    assert.ok(firstDone === -1 || mine.slice(firstDone).every((t) => t.done));
+  });
+
+  console.log('Date de fin et filtres d\'échéance');
+  await test('completedAt posée à l\'arrivée dans la dernière colonne, retirée à la sortie', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Fin', dueDate: '2031-03-15' })).body;
+    assert.equal(t.completedAt, null);
+    const done = (await call(B, 'PATCH', `/api/tasks/${t._id}/move`, { status: 'done' })).body;
+    assert.ok(done.completedAt);
+    const back = (await call(B, 'PATCH', `/api/tasks/${t._id}`, { status: 'todo' })).body;
+    assert.equal(back.completedAt, null);
+    const march = (await call(B, 'GET', `/api/projects/${acmeProject._id}/tasks?dueFrom=2031-03-01&dueTo=2031-04-01`)).body;
+    assert.deepEqual(march.map((x) => x._id), [t._id]);
+    const noDue = (await call(B, 'GET', `/api/projects/${acmeProject._id}/tasks?noDue=true`)).body;
+    assert.ok(noDue.length > 0 && noDue.every((x) => x.dueDate === null));
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+  });
+
+  console.log('Journal d\'activité');
+  await test('les actions sont journalisées, du plus récent au plus ancien', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Journalisée' })).body;
+    await call(B, 'PATCH', `/api/tasks/${t._id}/move`, { status: 'review' });
+    const log = (await call(B, 'GET', `/api/projects/${acmeProject._id}/activity?limit=2`)).body;
+    assert.equal(log.length, 2);
+    assert.equal(log[0].type, 'task.moved');
+    assert.deepEqual([log[0].data.from, log[0].data.to], ['todo', 'review']);
+    assert.equal(log[1].type, 'task.created');
+    assert.equal(log[0].userId, acmeBob.user.id);
+    const older = (await call(B, 'GET', `/api/projects/${acmeProject._id}/activity?limit=5&before=${log[1].at}`)).body;
+    assert.ok(older.every((e) => e.at < log[1].at));
+    assert.equal((await call(G, 'GET', `/api/projects/${acmeProject._id}/activity`)).status, 404);
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+  });
+
+  console.log('Pièces jointes (GridFS)');
+  await test('envoi, téléchargement identique, isolation, suppression en cascade', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Avec fichier' })).body;
+    const content = 'Bonjour GridFS ✓\n'.repeat(1000);
+    const up = await upload(B, t._id, content, 'note d’été.txt');
+    assert.equal(up.status, 201);
+    const meta = up.body.attachments[0];
+    assert.equal(meta.name, 'note d’été.txt');
+    assert.equal(meta.size, Buffer.byteLength(content));
+    const dl = await download(B, meta._id);
+    assert.equal(dl.status, 200);
+    assert.equal(dl.text, content);
+    assert.match(dl.headers.get('content-disposition'), /^attachment/);
+    assert.equal(dl.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal((await download(G, meta._id)).status, 404, 'autre entreprise');
+    assert.equal((await upload(G, t._id, 'x', 'x.txt')).status, 404, 'envoi sur la tâche d\'une autre entreprise');
+    assert.equal((await upload(B, t._id, '', 'vide.txt')).status, 400);
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+    assert.equal((await download(B, meta._id)).status, 404, 'fichier supprimé avec la tâche');
+  });
+  await test('suppression d\'une pièce jointe seule', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Avec fichier 2' })).body;
+    const meta = (await upload(B, t._id, '{"a":1}', 'data.json', 'application/json')).body.attachments[0];
+    assert.equal((await download(B, meta._id)).text, '{"a":1}', 'un fichier JSON n\'est pas interprété par le serveur');
+    const after = (await call(B, 'DELETE', `/api/tasks/${t._id}/attachments/${meta._id}`)).body;
+    assert.equal(after.attachments.length, 0);
+    assert.equal((await download(B, meta._id)).status, 404);
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+  });
+
+  console.log('Tableau de bord');
+  await test('statistiques cohérentes avec les tâches, et isolées', async () => {
+    const tasks = (await call(A, 'GET', `/api/projects/${acmeProject._id}/tasks`)).body;
+    const stats = (await call(A, 'GET', `/api/stats?projectId=${acmeProject._id}`)).body;
+    assert.equal(stats.totals.total, tasks.length);
+    assert.equal(stats.totals.done, tasks.filter((t) => t.status === 'done').length);
+    assert.equal(stats.byStatus.reduce((n, s) => n + s.count, 0), tasks.length);
+    assert.equal(stats.byAssignee.reduce((n, s) => n + s.total, 0), tasks.length);
+    assert.ok(stats.byAssignee.filter((a) => a._id).every((a) => a.user && a.user.firstName));
+    assert.ok(Array.isArray(stats.createdPerWeek) && Array.isArray(stats.completedPerWeek));
+    assert.equal((await call(G, 'GET', `/api/stats?projectId=${acmeProject._id}`)).status, 404);
+    const all = (await call(G, 'GET', '/api/stats')).body;
+    assert.ok(all.byProject.every((p) => !p.name.includes('Acme')), 'aucun projet d\'Acme dans les stats de Globex');
   });
 
   console.log('Cascades');
