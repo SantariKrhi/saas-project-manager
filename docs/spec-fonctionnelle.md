@@ -27,8 +27,9 @@ La création d'une entreprise crée automatiquement son premier administrateur.
 | Créer / modifier / supprimer un utilisateur | – | ✘ | ✔ |
 | Voir les projets | – | ses projets | tous |
 | Créer / modifier / supprimer un projet, gérer ses membres et colonnes | – | ✘ | ✔ |
-| Voir le Kanban d'un projet | – | si membre | ✔ |
-| Créer / modifier / déplacer / supprimer une tâche, commenter | – | si membre du projet | ✔ |
+| Voir le Kanban, le calendrier et le journal d'un projet | – | si membre | ✔ |
+| Voir « Mes tâches » et le tableau de bord | – | ses projets | tous les projets |
+| Créer / modifier / déplacer / supprimer une tâche, commenter, gérer checklist et pièces jointes | – | si membre du projet | ✔ |
 
 Tout accès à une ressource d'une autre entreprise, ou d'un projet dont on n'est pas membre, se comporte comme
 si la ressource n'existait pas (« introuvable »).
@@ -61,7 +62,14 @@ si la ressource n'existait pas (« introuvable »).
 | A6 | Filtres du Kanban | Par assigné et par priorité |
 | A7 | Ajout rapide | Saisie d'un titre en bas d'une colonne + Entrée |
 | A8 | Gestion de l'équipe | Écran réservé aux admins : ajout, changement de rôle, suppression |
-| A9 | Jeu de données de démo | Deux entreprises pré-remplies pour tester l'isolation |
+| A9 | Jeu de données de démo | Deux entreprises pré-remplies (historique sur 6 semaines) pour tester l'isolation et les statistiques |
+| A10 | **Checklist** | Sous-tâches à cocher dans une tâche, avec barre d'avancement ; « 2/4 » affiché sur la carte |
+| A11 | **Mes tâches** | Toutes les tâches assignées à l'utilisateur, tous projets confondus, rangées en : en retard, aujourd'hui, 7 jours, plus tard, sans échéance, terminées |
+| A12 | **Journal d'activité** | Historique du projet (créations, déplacements, modifications, commentaires, pièces jointes…) dans un panneau latéral, groupé par jour ; un clic ouvre la tâche ; conservé 90 jours |
+| A13 | **Pièces jointes** | Fichiers (10 Mo max.) ajoutés par glisser-déposer ou sélection, aperçu des images, téléchargement, suppression |
+| A14 | **Tableau de bord** | Indicateurs (tâches, terminées, en retard, non assignées) et graphiques : créées/terminées par semaine, avancement par projet ou par colonne, charge par personne, répartition par priorité ; pour un projet ou tous |
+| A15 | **Calendrier** | Vue mensuelle des échéances d'un projet ; glisser une tâche sur un jour fixe son échéance, la glisser dans « Sans échéance » la retire ; en liste sur mobile |
+| A16 | Thème clair / sombre | Automatique ou au choix, contrastes conformes WCAG AA |
 
 ## 4. Règles de gestion
 
@@ -75,6 +83,9 @@ si la ressource n'existait pas (« introuvable »).
 8. Supprimer un projet supprime ses tâches ; supprimer l'entreprise supprime tout son contenu.
 9. Un membre ne voit que les projets dont il est membre ; un admin voit tous les projets.
 10. Un message d'échec de connexion est identique que l'entreprise, l'email ou le mot de passe soit erroné.
+11. Une tâche est « terminée » quand elle est dans la dernière colonne de son projet ; elle est « en retard » si son échéance est passée et qu'elle n'est pas terminée.
+12. Une pièce jointe fait 10 Mo au plus ; une tâche en compte 20 au plus et sa checklist 50 éléments au plus.
+13. Le journal d'activité est conservé 90 jours (réglable) puis supprimé automatiquement.
 
 ## 5. Parcours et écrans
 
@@ -85,6 +96,10 @@ si la ressource n'existait pas (« introuvable »).
 | **Kanban d'un projet** | Colonnes, cartes, filtres, ajout rapide, bouton « Paramètres » (admin) |
 | **Fenêtre tâche** | Titre, description, statut, assigné, priorité, échéance, étiquettes, suppression, commentaires |
 | **Paramètres du projet** (admin) | Nom, description, colonnes, membres (cases à cocher), suppression |
+| **Calendrier d'un projet** | Mois en grille (liste sur mobile), tâches sans échéance à côté, glisser-déposer pour changer l'échéance |
+| **Activité** (panneau) | Historique du projet groupé par jour, « Voir plus » pour remonter le temps |
+| **Mes tâches** | Tâches assignées par urgence, ouverture directe de la fenêtre tâche |
+| **Tableau de bord** | Indicateurs et graphiques, choix « tous mes projets » ou un projet |
 | **Équipe** (admin) | Tableau des utilisateurs, ajout, changement de rôle, suppression |
 
 Navigation : barre supérieure (nom de l'entreprise, Projets, Équipe pour les admins, utilisateur, déconnexion).
@@ -103,6 +118,12 @@ L'interface s'adapte aux petits écrans et au mode sombre.
 | Membre | glisser une carte vers une autre colonne | mettre à jour l'avancement en un geste |
 | Membre | filtrer par personne ou priorité | me concentrer sur l'essentiel |
 | Membre | commenter une tâche | échanger sans quitter l'outil |
+| Membre | découper une tâche en checklist | suivre son avancement pas à pas |
+| Membre | joindre une maquette ou un document à une tâche | tout retrouver au même endroit |
+| Membre | voir toutes mes tâches, tous projets confondus, par urgence | savoir quoi faire en priorité |
+| Membre | voir les échéances du mois dans un calendrier et les déplacer | planifier facilement |
+| Membre | consulter l'historique d'un projet | savoir qui a fait quoi et quand |
+| Admin | suivre l'avancement et la charge de l'équipe dans un tableau de bord | repérer les retards et rééquilibrer |
 | Admin | retirer un collaborateur | qu'il perde l'accès et que ses tâches soient libérées |
 | Client SaaS | être certain que les autres entreprises ne voient rien de mes données | respecter la confidentialité |
 
@@ -116,5 +137,5 @@ L'interface s'adapte aux petits écrans et au mode sombre.
 
 ## 8. Hors périmètre
 
-Réinitialisation de mot de passe, notifications, pièces jointes, historique d'activité, facturation (le champ
+Réinitialisation de mot de passe, notifications, recherche plein texte, facturation (le champ
 `plan` est réservé), authentification externe (SSO), application mobile native.

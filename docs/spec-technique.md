@@ -28,7 +28,9 @@ Organisation du code (`app/src`) :
 | `repositories/index.js` | **Seul** accès aux collections métier ; chaque repository est lié à un `companyId` |
 | `middleware/auth.js` | Vérification du JWT, chargement du rôle, `requireAdmin` |
 | `lib/access.js`, `lib/http.js` | Contrôle d'accès aux projets, erreurs HTTP, validation des identifiants |
-| `routes/*.js` | `auth`, `company`, `users`, `projects`, `tasks` (+ board Kanban) |
+| `routes/*.js` | `auth`, `company`, `users`, `projects`, `tasks` (+ board, checklist, pièces jointes, journal), `insights` (mes tâches, statistiques) |
+| `indexes.js` | Création des index au démarrage (dont TTL) |
+| `lib/activity.js` | Écriture dans le journal d'activité |
 | `seed.js` | Jeu de données de démo (uniquement si la base est vide) |
 | `public/` | Interface web |
 
@@ -106,6 +108,15 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
   "comments": [
     { "userId": { "$oid": "6ad10539b1611e3d4b131ebb" }, "text": "À finir pour jeudi", "at": { "$date": "2026-10-15T10:30:00Z" } }
   ],
+  "checklist": [
+    { "_id": { "$oid": "6ad10539b1611e3d4b131ec1" }, "text": "Formulaire", "done": true },
+    { "_id": { "$oid": "6ad10539b1611e3d4b131ec2" }, "text": "Messages d'erreur", "done": false }
+  ],
+  "attachments": [
+    { "_id": { "$oid": "6ad10539b1611e3d4b131ec3" }, "name": "maquette.png", "size": 48213,
+      "contentType": "image/png", "uploadedBy": { "$oid": "6ad10539b1611e3d4b131ebd" }, "at": { "$date": "2026-10-16T14:00:00Z" } }
+  ],
+  "completedAt": null,
   "createdAt": { "$date": "2026-10-15T09:00:00Z" },
   "updatedAt": { "$date": "2026-10-15T10:30:00Z" }
 }
@@ -117,15 +128,61 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
 | `position` | Nombre ; ordre dans la colonne. Insertion entre deux cartes = moyenne de leurs positions (pas de renumérotation) ; en fin de colonne = dernière + 1024 |
 | `assigneeId` | `null` ou membre du projet (même entreprise) |
 | `priority` | `low` \| `medium` \| `high` |
-| `dueDate` | `null` ou date |
+| `dueDate` | `null` ou date (stockée à minuit UTC : c'est une date de calendrier) |
+| `checklist` | Sous-éléments `{ _id, text, done }` ; chacun a son propre `_id` pour être modifié individuellement (§ 11.1) |
+| `attachments` | Métadonnées des pièces jointes ; `_id` = identifiant du fichier dans GridFS (§ 11.4) |
+| `completedAt` | Posée quand la tâche arrive dans la dernière colonne, remise à `null` si elle en ressort (statistiques § 11.2) |
 
-### 2.5 Relations
+### 2.5 `activities` (journal d'activité)
+
+```json
+{
+  "_id": { "$oid": "6ad10539b1611e3d4b131ed0" },
+  "companyId": { "$oid": "6ad10539b1611e3d4b131eba" },
+  "projectId": { "$oid": "6ad10539b1611e3d4b131ebc" },
+  "userId": { "$oid": "6ad10539b1611e3d4b131ebd" },
+  "type": "task.moved",
+  "data": { "taskId": { "$oid": "6ad10539b1611e3d4b131ebe" }, "title": "Développer la page de login", "from": "doing", "to": "review" },
+  "at": { "$date": "2026-10-16T09:12:00Z" }
+}
+```
+
+`type` : `task.created`, `task.moved`, `task.updated` (avec `data.fields`), `task.deleted`, `comment.added`,
+`checklist.checked`, `attachment.added`, `attachment.removed`, `project.created`, `project.updated`, `project.members`.
+`data.title` est une **copie** du titre au moment de l'action : l'historique reste lisible même si la tâche est
+renommée ou supprimée (dénormalisation volontaire, l'entrée est immuable).
+
+### 2.6 `attachments.files` / `attachments.chunks` (GridFS)
+
+Collections gérées par le driver (`GridFSBucket`, bucket `attachments`). Le fichier est découpé en morceaux de
+255 Ko dans `attachments.chunks` ; `attachments.files` porte ses métadonnées :
+
+```json
+{
+  "_id": { "$oid": "6ad10539b1611e3d4b131ec3" },
+  "filename": "maquette.png",
+  "length": 48213,
+  "chunkSize": 261120,
+  "uploadDate": { "$date": "2026-10-16T14:00:00Z" },
+  "metadata": {
+    "companyId": { "$oid": "6ad10539b1611e3d4b131eba" },
+    "projectId": { "$oid": "6ad10539b1611e3d4b131ebc" },
+    "taskId": { "$oid": "6ad10539b1611e3d4b131ebe" },
+    "contentType": "image/png",
+    "uploadedBy": { "$oid": "6ad10539b1611e3d4b131ebd" }
+  }
+}
+```
+
+### 2.7 Relations
 
 ```
 companies 1 ──── * users
 companies 1 ──── * projects ── * ──┐ (projects.memberIds)
 companies 1 ──── * tasks           └── users
 projects  1 ──── * tasks      tasks.assigneeId ──▶ users
+projects  1 ──── * activities
+tasks     1 ──── * attachments.files (GridFS, via metadata.taskId)
 ```
 
 ## 3. Choix de modélisation : références ou imbrication
@@ -135,6 +192,9 @@ projects  1 ──── * tasks      tasks.assigneeId ──▶ users
 | Tâches | **Collection séparée**, référence `projectId` | Nombre non borné, modifiées très souvent (déplacements Kanban) : les imbriquer dans `projects` ferait croître un document sans limite (16 Mo) et réécrirait un gros document à chaque déplacement. Permet aussi d'indexer et de requêter les tâches seules |
 | Membres d'un projet | **Tableau de références** `memberIds` dans le projet | Nombre borné et faible ; lecture « membres d'un projet » en un seul accès ; un utilisateur appartient à plusieurs projets (relation n-n sans collection de liaison) |
 | Commentaires | **Imbriqués** dans la tâche | Peu nombreux, toujours lus avec la tâche, jamais requêtés seuls |
+| Checklist | **Imbriquée** dans la tâche (50 éléments max.) | Toujours lue avec la tâche ; chaque élément a un `_id` pour être modifié seul avec `arrayFilters` |
+| Pièces jointes | Métadonnées **imbriquées** + contenu dans **GridFS** | Liste affichée avec la tâche sans requête supplémentaire ; le binaire (jusqu'à 10 Mo) n'alourdit pas le document tâche (limite de 16 Mo) |
+| Journal d'activité | **Collection séparée** | Volume non borné, lu par page et du plus récent au plus ancien, purgé automatiquement (TTL) : rien de tout cela n'est possible dans un tableau imbriqué |
 | Colonnes du Kanban | **Imbriquées** dans le projet | Configuration propre au projet, de petite taille |
 | Étiquettes | Tableau de chaînes dans la tâche | Libres, pas de gestion centralisée nécessaire |
 | `companyId` | **Dénormalisé** dans chaque document (y compris les tâches) | Isolation et filtrage sans jointure ; clé de sharding naturelle |
@@ -148,10 +208,31 @@ Contrepartie assumée : pas de contraintes référentielles. Elles sont assurée
 | `companies` | `{ slug: 1 }` **unique** | Connexion par identifiant d'entreprise, unicité |
 | `users` | `{ companyId: 1, email: 1 }` **unique** | Unicité de l'email par entreprise ; recherche au login |
 | `projects` | `{ companyId: 1, _id: 1 }` | Accès à un projet d'une entreprise ; listes par entreprise |
+| `projects` | `{ companyId: 1, memberIds: 1 }` | Projets d'un membre (index multiclé sur le tableau) |
 | `tasks` | `{ companyId: 1, projectId: 1, status: 1, position: 1 }` | Board Kanban : tâches d'un projet, par colonne, triées |
+| `tasks` | `{ companyId: 1, assigneeId: 1, dueDate: 1 }` | « Mes tâches » : tâches d'une personne par échéance |
+| `tasks` | `{ companyId: 1, projectId: 1, dueDate: 1 }` | Calendrier : échéances d'un projet sur une plage de dates |
+| `activities` | `{ companyId: 1, projectId: 1, at: -1 }` | Journal d'un projet, du plus récent au plus ancien |
+| `activities` | `{ at: 1 }` **TTL** (`expireAfterSeconds` = 90 jours) | Purge automatique des entrées anciennes (§ 11.3) |
+| `attachments.files` | `{ "metadata.companyId": 1, "metadata.taskId": 1 }` | Fichiers d'une tâche (suppressions en cascade) |
 
 `companyId` est toujours le **préfixe** des index : les requêtes sont ciblées sur une entreprise et l'index
 reste utilisable tel quel en environnement shardé. Un index `_id` implicite existe sur chaque collection.
+
+Les index sont créés **par l'application à chaque démarrage** (`app/src/indexes.js`, `createIndex` est idempotent) :
+ils existent aussi sur une base déjà remplie. Si `ACTIVITY_TTL_DAYS` change, l'index TTL est ajusté par `collMod`.
+
+**Vérification avec `explain()`** (plan gagnant de chaque requête, sur le jeu de démo) :
+
+| Requête | Plan |
+|---|---|
+| Board Kanban | `IXSCAN companyId_1_projectId_1_status_1_position_1` |
+| Mes tâches | `IXSCAN companyId_1_assigneeId_1_dueDate_1` |
+| Calendrier (mois) | `IXSCAN companyId_1_projectId_1_dueDate_1` |
+| Journal d'activité | `IXSCAN companyId_1_projectId_1_at_-1` |
+| Pièces jointes d'une tâche | `IXSCAN metadata.companyId_1_metadata.taskId_1` |
+
+Aucune requête de l'application ne fait de parcours complet de collection (`COLLSCAN`).
 
 ## 5. Isolation entre entreprises (multi-tenant)
 
@@ -179,8 +260,9 @@ MongoDB n'impose pas de clés étrangères ; l'application s'en charge (`reposit
 |---|---|
 | Utilisateur | Retiré de `projects.memberIds` ; `assigneeId` mis à `null` sur ses tâches |
 | Retrait d'un membre d'un projet | Ses tâches dans ce projet sont désassignées |
-| Projet | Toutes ses tâches sont supprimées |
-| Entreprise | Tâches, projets, utilisateurs puis l'entreprise (confirmation par le slug) |
+| Tâche | Ses fichiers GridFS sont supprimés |
+| Projet | Ses tâches, son journal et ses fichiers GridFS sont supprimés |
+| Entreprise | Fichiers, journal, tâches, projets, utilisateurs puis l'entreprise (confirmation par le slug) |
 | Colonne d'un projet | Refusée (409) si elle contient encore des tâches |
 | Renommage d'une colonne | Ses tâches suivent (`renamedColumns: [{ from, to }]`), y compris l'échange de deux noms ; fusion dans une colonne existante refusée (400) |
 
@@ -209,6 +291,14 @@ Préfixe `/api`, JSON. Authentification : `Authorization: Bearer <JWT>` sauf `/h
 | `GET`, `PATCH`, `DELETE /tasks/:id` | membre / admin | Une tâche |
 | `PATCH /tasks/:id/move` | membre / admin | `{ status, position? }` : déplacement Kanban |
 | `POST /tasks/:id/comments` | membre / admin | `{ text }` |
+| `GET /projects/:id/tasks?dueFrom=&dueTo=` / `?noDue=true` | membre / admin | Tâches par plage d'échéance (calendrier) / sans échéance |
+| `POST /tasks/:id/checklist`, `PATCH` / `DELETE /tasks/:id/checklist/:itemId` | membre / admin | Checklist : `{ text }`, `{ text?, done? }` |
+| `POST /tasks/:id/attachments` | membre / admin | Corps binaire brut, en-têtes `X-File-Name` (encodé URI) et `X-File-Type` ; 10 Mo max. |
+| `GET /attachments/:fileId` | membre / admin | Téléchargement (toujours `Content-Disposition: attachment`) |
+| `DELETE /tasks/:id/attachments/:fileId` | membre / admin | Supprime le fichier et ses métadonnées |
+| `GET /projects/:id/activity?limit=&before=` | membre / admin | Journal, pagination par curseur sur la date |
+| `GET /me/tasks` | connecté | Tâches assignées à l'utilisateur, tous projets visibles |
+| `GET /stats?projectId=` | connecté | Statistiques d'un projet ou de tous les projets visibles |
 
 Codes : `400` validation, `401` non authentifié, `403` rôle insuffisant, `404` introuvable ou hors périmètre,
 `409` conflit (email, slug, colonne non vide, dernier admin).
@@ -220,6 +310,7 @@ Codes : `400` validation, `401` non authentifié, `403` rôle insuffisant, `404`
 | `MONGO_URI` | `mongodb://mongo:27017/saas` | **Connexion MongoDB, seul point à modifier pour changer de topologie** |
 | `MONGO_DB` | `saas` | Nom de la base |
 | `JWT_SECRET` | `dev-secret-change-me` | Secret de signature (à changer en production) |
+| `ACTIVITY_TTL_DAYS` | `90` | Durée de conservation du journal d'activité (index TTL) |
 | `PORT` / `APP_PORT` | `3000` | Port de l'app / port exposé |
 
 Aucune adresse ni option de connexion n'est écrite en dur : tout passe par `MONGO_URI` (lue dans `config.js`,
@@ -246,6 +337,8 @@ mongodb://mongos1:27017,mongos2:27017/saas
 | `projects` | `{ companyId: 1, _id: 1 }` | Idem, répartition fine |
 | `users` | `{ companyId: 1, email: 1 }` | L'index unique `{ companyId, email }` doit **contenir la clé de sharding** (contrainte MongoDB) ; une clé hashée ne le permet pas |
 | `companies` | non shardée | Très petite collection, accès par `_id` ou `slug` |
+| `activities` | `{ companyId: 1, projectId: 1 }` | Lectures toujours par projet ; l'index TTL reste compatible avec le sharding |
+| `attachments.chunks` | `{ files_id: 1, n: 1 }` | Clé recommandée par MongoDB pour GridFS (les morceaux d'un fichier restent ensemble) |
 
 Points d'attention déjà traités : toutes les requêtes applicatives incluent `companyId` (pas de scatter-gather),
 les index commencent par `companyId`, l'unicité de l'email est par entreprise. À vérifier en Partie II : activer
@@ -260,3 +353,79 @@ et l'usage de transactions pour les cascades (section 6).
 - Positions des cartes en nombres flottants : après un très grand nombre d'insertions successives au même endroit,
   une renumérotation de la colonne deviendrait nécessaire (non implémentée).
 - Pas de limitation de débit (rate limiting) sur le login.
+- Pas d'antivirus sur les pièces jointes ; elles sont servies en téléchargement uniquement (jamais affichées par le navigateur),
+  avec `X-Content-Type-Options: nosniff` et une CSP `sandbox`.
+
+## 11. Fonctionnalités avancées MongoDB
+
+### 11.1 Checklist : mise à jour ciblée d'un élément de tableau
+
+Cocher un élément modifie **uniquement** cet élément, côté base, sans relire ni réécrire le tableau :
+
+```js
+db.tasks.findOneAndUpdate(
+  { _id: taskId, companyId, "checklist._id": itemId },
+  { $set: { "checklist.$[item].done": true, updatedAt: new Date() } },
+  { arrayFilters: [{ "item._id": itemId }], returnDocument: "after" }
+)
+```
+
+Ajout : `$push` ; suppression : `$pull: { checklist: { _id: itemId } }`. Deux personnes qui cochent deux éléments
+différents en même temps ne s'écrasent pas (chaque mise à jour est atomique sur le document).
+
+### 11.2 Tableau de bord et « Mes tâches » : aggregation pipeline
+
+Les statistiques sont calculées **par la base, en un seul aller-retour**, grâce à `$facet` qui exécute plusieurs
+sous-pipelines sur le même jeu de tâches (`repositories/index.js`, `tasks.stats`) :
+
+```js
+[
+  { $match: { companyId, projectId: { $in: projectIds } } },
+  // jointure limitée à l'entreprise : même un $lookup ne peut pas sortir du périmètre
+  { $lookup: { from: "projects", let: { id: "$projectId" }, as: "p", pipeline: [
+      { $match: { companyId, $expr: { $eq: ["$_id", "$$id"] } } },
+      { $project: { name: 1, last: { $arrayElemAt: ["$columns", -1] } } } ] } },
+  { $set: { p: { $first: "$p" } } },
+  { $set: { done: { $eq: ["$status", "$p.last"] } } },          // terminée = dans la dernière colonne
+  { $set: { overdue: { $and: [{ $not: ["$done"] }, { $lt: ["$dueDate", today] }, ...] } } },
+  { $facet: {
+      totals:          [{ $group: { _id: null, total: { $sum: 1 }, done: ..., overdue: ..., unassigned: ... } }],
+      byStatus:        [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+      byPriority:      [{ $group: { _id: "$priority", count: { $sum: 1 } } }],
+      byProject:       [{ $group: { _id: "$projectId", name: { $first: "$p.name" }, total: ..., done: ... } }],
+      byAssignee:      [{ $group: { _id: "$assigneeId", ... } }, { $lookup: { from: "users", ... } }],
+      createdPerWeek:  [{ $match: { createdAt: { $gte: since } } },
+                        { $group: { _id: { $dateTrunc: { date: "$createdAt", unit: "week", startOfWeek: "monday",
+                                                          timezone: "Europe/Paris" } }, count: { $sum: 1 } } }],
+      completedPerWeek:[ /* idem sur completedAt */ ]
+  } }
+]
+```
+
+« Mes tâches » utilise le même principe : `$match` sur l'assigné (index `companyId, assigneeId, dueDate`), `$lookup`
+du projet, puis un tri calculé en base (non terminées d'abord, échéance croissante avec les tâches sans échéance
+en dernier, puis priorité via `$switch`).
+
+### 11.3 Journal d'activité : index TTL
+
+```js
+db.activities.createIndex({ at: 1 }, { expireAfterSeconds: 90 * 24 * 3600, name: "activities_ttl" })
+```
+
+Un processus interne de MongoDB supprime les entrées dont `at` est plus ancien que 90 jours (passage environ
+toutes les 60 s) : aucune tâche planifiée à écrire, et la collection ne grossit pas indéfiniment. La durée est
+réglable par `ACTIVITY_TTL_DAYS`. Lecture paginée par **curseur** (`?before=<date>`) plutôt que par `skip`, qui
+resterait coûteux sur un long historique.
+
+### 11.4 Pièces jointes : GridFS
+
+Les fichiers sont stockés dans MongoDB via `GridFSBucket` : découpés en morceaux de 255 Ko (`attachments.chunks`),
+décrits dans `attachments.files`. Avantages ici : une seule base à sauvegarder et à répliquer (Partie II),
+pas de volume disque partagé entre instances de l'application, isolation par `metadata.companyId`, et suppression
+en cascade par requête sur les métadonnées. Le téléchargement est diffusé en flux (`stream.pipeline`) sans
+charger le fichier entier en mémoire.
+
+### 11.5 Calendrier : requête par plage sur un index
+
+`GET /projects/:id/tasks?dueFrom=2026-10-26&dueTo=2026-12-07` → `{ companyId, projectId, dueDate: { $gte, $lt } }`,
+servie par l'index `{ companyId: 1, projectId: 1, dueDate: 1 }` (IXSCAN borné, voir § 4).

@@ -22,6 +22,7 @@ Les valeurs par défaut fonctionnent sans rien faire. Pour les changer, copier `
 | `MONGO_URI` | URI de connexion MongoDB (replica set, mongos...) | `mongodb://mongo:27017/saas` |
 | `MONGO_DB` | Nom de la base | `saas` |
 | `JWT_SECRET` | Secret de signature des tokens | `dev-secret-change-me` |
+| `ACTIVITY_TTL_DAYS` | Conservation du journal d'activité (index TTL) | `90` |
 | `APP_PORT` | Port exposé sur la machine | `3000` |
 
 ## Réinitialiser la base
@@ -41,8 +42,8 @@ Mot de passe commun : `demo1234`
 
 | Entreprise (slug) | Admin | Membre |
 |---|---|---|
-| `acme` | admin@acme.test | bob@acme.test |
-| `globex` | admin@globex.test | bob@globex.test |
+| `acme` | admin@acme.test | bob@acme.test, chloe@acme.test |
+| `globex` | admin@globex.test | bob@globex.test, chloe@globex.test |
 
 ```bash
 curl -X POST localhost:3000/api/auth/login -H "Content-Type: application/json"   -d '{"company":"acme","email":"admin@acme.test","password":"demo1234"}'
@@ -65,6 +66,10 @@ Une ressource d'une autre entreprise (ou d'un projet dont on n'est pas membre) r
 | `GET /api/projects/:id/board` (filtres `assigneeId`, `priority`) | membre du projet / admin |
 | `GET/POST /api/projects/:id/tasks` | membre du projet / admin |
 | `GET/PATCH/DELETE /api/tasks/:id`, `PATCH /api/tasks/:id/move`, `POST /api/tasks/:id/comments` | membre du projet / admin |
+| `POST/PATCH/DELETE /api/tasks/:id/checklist[/:itemId]` | membre du projet / admin |
+| `POST /api/tasks/:id/attachments`, `GET /api/attachments/:fileId`, `DELETE /api/tasks/:id/attachments/:fileId` | membre du projet / admin |
+| `GET /api/projects/:id/activity` (pagination `?before=`) | membre du projet / admin |
+| `GET /api/me/tasks`, `GET /api/stats[?projectId=]` | connecté (projets visibles) |
 
 ## Tests
 
@@ -74,9 +79,13 @@ Avec l'application démarrée (Node 18+ sur la machine, facultatif) :
 node tests/smoke.js
 ```
 
-## État d'avancement
+## Fonctionnalités
 
-Fait : connexion MongoDB configurable, validators et index, seed, authentification JWT,
-CRUD entreprise / utilisateurs / projets / tâches, board Kanban, commentaires, cascades, tests d'isolation,
-interface web (login, projets, Kanban en drag & drop, gestion de l'équipe).
-Spécifications : `docs/spec-technique.md` et `docs/spec-fonctionnelle.md`.
+- Entreprises, utilisateurs (admin / membre), projets, tâches, avec isolation stricte entre entreprises
+- Kanban en glisser-déposer, colonnes personnalisables, priorité, échéance, étiquettes, commentaires
+- Checklist dans les tâches, pièces jointes (stockées dans MongoDB via GridFS)
+- Calendrier des échéances, vue « Mes tâches », journal d'activité (purgé par index TTL)
+- Tableau de bord statistique (aggregation pipeline)
+- Thème clair / sombre, interface adaptée au mobile
+
+Détails : `docs/spec-fonctionnelle.md` et `docs/spec-technique.md` (§ 11 : fonctionnalités avancées MongoDB).
