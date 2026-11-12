@@ -15,6 +15,12 @@ async function ensureIndexes(db) {
     ['tasks', { companyId: 1, assigneeId: 1, dueDate: 1 }],
     // Calendrier : tâches d'un projet sur une plage d'échéances
     ['tasks', { companyId: 1, projectId: 1, dueDate: 1 }],
+    // Recherche plein texte (français : racinisation, mots vides, accents). Index composé : companyId en préfixe
+    // d'égalité, donc toute recherche DOIT préciser l'entreprise. Un seul index texte possible par collection.
+    ['tasks', { companyId: 1, title: 'text', labels: 'text', description: 'text', 'checklist.text': 'text', 'comments.text': 'text' }, {
+      name: 'tasks_text', default_language: 'french',
+      weights: { title: 10, labels: 5, description: 3, 'checklist.text': 2, 'comments.text': 1 },
+    }],
     // Journal : dernières entrées d'un projet
     ['activities', { companyId: 1, projectId: 1, at: -1 }],
     // TTL : MongoDB supprime lui-même les entrées plus anciennes que N jours

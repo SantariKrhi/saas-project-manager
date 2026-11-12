@@ -61,6 +61,7 @@ const ICONS = {
   chevronLeft: '<path d="m15 18-6-6 6-6"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chart: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   userCheck: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
 };
@@ -348,6 +349,7 @@ function shell(content, active) {
         link('Mes tâches', '#/my', 'my', 'userCheck'),
         link('Tableau de bord', '#/dashboard', 'dashboard', 'chart'),
         me.role === 'admin' ? link('Équipe', '#/team', 'team', 'users') : null),
+      searchBox(),
       h('div', { class: 'user' },
         h('div', { class: 'user-name' }, h('span', {}, fullName(me)), h('small', {}, me.role === 'admin' ? 'Administrateur' : 'Membre')),
         avatar(me, true),
@@ -379,6 +381,109 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', route);
+
+// Raccourci « / » : place le curseur dans la recherche (sauf pendant une saisie ou une fenêtre ouverte).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('input, textarea, select, [contenteditable]') || document.querySelector('.overlay')) return;
+  const input = document.querySelector('.search input');
+  if (!input) return;
+  e.preventDefault();
+  input.closest('.topbar').classList.add('searching');
+  input.focus();
+});
+
+// Ouvre la fenêtre d'une tâche depuis n'importe quelle page (recherche, liens).
+async function openTaskById(taskId) {
+  await safely(async () => {
+    const task = await api('GET', `/tasks/${taskId}`);
+    const [project, users] = await Promise.all([api('GET', `/projects/${task.projectId}`), api('GET', '/users')]);
+    const usersById = new Map(users.map((u) => [u._id, u]));
+    const members = project.memberIds.map((id) => usersById.get(id)).filter(Boolean);
+    openTaskModal(task, { project, members, usersById, reload: route });
+  });
+}
+
+// Surligne les mots cherchés, sans tenir compte des accents (« ecrire » surligne « Écrire »).
+const ACCENTS = { a: 'aàâä', c: 'cç', e: 'eéèêë', i: 'iîï', o: 'oôö', u: 'uùûü', y: 'yÿ' };
+function highlight(text, query) {
+  const words = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter((w) => w.length > 1);
+  if (!words.length || !text) return text;
+  const pattern = words.map((w) => [...w].map((ch) => (ACCENTS[ch] ? `[${ACCENTS[ch]}]` : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join(''));
+  return text.split(new RegExp(`(${pattern.join('|')})`, 'gi')).map((part, i) => (i % 2 ? h('mark', {}, part) : part));
+}
+
+// Recherche plein texte (index texte MongoDB) : suggestions au fil de la frappe, navigation au clavier.
+function searchBox() {
+  const listId = uid('results');
+  const input = h('input', {
+    type: 'search', placeholder: 'Rechercher une tâche…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Rechercher une tâche',
+    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': listId, 'aria-autocomplete': 'list',
+  });
+  const results = h('ul', { class: 'search-results', id: listId, role: 'listbox', 'aria-label': 'Résultats', hidden: true });
+  const toggle = h('button', { class: 'btn ghost icon-only search-toggle', type: 'button', 'aria-label': 'Rechercher', title: 'Rechercher',
+    onclick: () => { wrap.closest('.topbar').classList.add('searching'); input.focus(); } }, icon('search'));
+  const wrap = h('div', { class: 'search', role: 'search' }, toggle, icon('search'), input,
+    h('kbd', { class: 'search-kbd', 'aria-hidden': 'true', title: 'Raccourci' }, '/'), results);
+
+  let timer = null;
+  let seq = 0;
+  let items = [];
+  let active = -1;
+
+  const close = () => { results.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
+  const select = (i) => {
+    active = i;
+    [...results.querySelectorAll('[role=option]')].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    const current = results.querySelector(`[data-index="${i}"]`);
+    if (current) { input.setAttribute('aria-activedescendant', current.id); current.scrollIntoView({ block: 'nearest' }); }
+  };
+  const choose = (r) => {
+    close();
+    input.value = '';
+    items = [];
+    input.blur();
+    openTaskById(r._id);
+  };
+
+  async function run() {
+    const q = input.value.trim();
+    const mine = ++seq;
+    if (q.length < 2) { items = []; close(); return; }
+    let list = [];
+    try { list = await api('GET', `/search?q=${encodeURIComponent(q)}`); } catch { /* recherche indisponible : aucun résultat */ }
+    if (mine !== seq) return; // une frappe plus récente a déjà relancé la recherche
+    items = list;
+    results.replaceChildren(...(list.length
+      ? list.map((r, i) => h('li', {
+        role: 'option', id: `${listId}-${i}`, 'data-index': i, 'aria-selected': 'false',
+        onmousedown: (e) => { e.preventDefault(); choose(r); }, onmousemove: () => { if (active !== i) select(i); },
+      },
+      h('span', { class: `dot-prio ${r.priority}`, title: `Priorité ${PRIO[r.priority].toLowerCase()}` }),
+      h('span', { class: 'sr-main' },
+        h('span', { class: 'sr-title' }, highlight(r.title, q)),
+        h('span', { class: 'hint' }, `${r.project.name} · ${r.status}`),
+        r.excerpt ? h('span', { class: 'sr-excerpt' }, highlight(r.excerpt, q)) : null)))
+      : [h('li', { class: 'search-empty' }, `Aucune tâche ne correspond à « ${q} »`)]));
+    results.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    select(list.length ? 0 : -1);
+  }
+
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 220); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); select((active + 1) % items.length); }
+    else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); select((active - 1 + items.length) % items.length); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[active]) choose(items[active]); }
+    else if (e.key === 'Escape') { e.preventDefault(); if (!results.hidden) close(); else { input.value = ''; input.blur(); } }
+  });
+  input.addEventListener('focus', () => { if (items.length || input.value.trim().length >= 2) { results.hidden = false; input.setAttribute('aria-expanded', 'true'); } });
+  input.addEventListener('blur', () => setTimeout(() => {
+    close();
+    if (!input.value) { const bar = wrap.closest('.topbar'); if (bar) bar.classList.remove('searching'); }
+  }, 120));
+  return wrap;
+}
 
 // ---------------------------------------------------------------- projets
 

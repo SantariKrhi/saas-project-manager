@@ -251,6 +251,35 @@ const login = async (company, email) =>
     await call(B, 'DELETE', `/api/tasks/${t._id}`);
   });
 
+  console.log('Recherche plein texte');
+  await test('pertinence : un mot du titre passe avant un mot de commentaire', async () => {
+    const t = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Zéphyrine dans le titre' })).body;
+    const other = (await call(B, 'POST', `/api/projects/${acmeProject._id}/tasks`, { title: 'Autre tâche' })).body;
+    await call(B, 'POST', `/api/tasks/${other._id}/comments`, { text: 'on parle de zéphyrine ici' });
+    const res = (await call(B, 'GET', '/api/search?q=zéphyrine')).body;
+    assert.deepEqual(res.map((r) => r._id), [t._id, other._id]);
+    assert.ok(res[0].score > res[1].score);
+    assert.equal(res[0].project.name, acmeProject.name);
+    await call(B, 'DELETE', `/api/tasks/${t._id}`);
+    await call(B, 'DELETE', `/api/tasks/${other._id}`);
+  });
+  await test('langue française : pluriel et accents', async () => {
+    const titles = (q) => call(B, 'GET', `/api/search?q=${encodeURIComponent(q)}`).then((r) => r.body.map((x) => x.title));
+    assert.ok((await titles('documentations')).includes('Écrire la documentation'), 'pluriel');
+    assert.ok((await titles('ecrire')).includes('Écrire la documentation'), 'sans accent');
+    assert.ok((await titles('glisser')).includes('Board Kanban en drag & drop'), 'élément de checklist');
+  });
+  await test('isolation : seulement les tâches de son entreprise et de ses projets', async () => {
+    const acme = (await call(A, 'GET', '/api/search?q=documentation')).body;
+    const globex = (await call(G, 'GET', '/api/search?q=documentation')).body;
+    const globexProjects = (await call(G, 'GET', '/api/projects')).body.map((p) => p._id);
+    assert.ok(acme.length && globex.length);
+    assert.ok(globex.every((r) => globexProjects.includes(r.projectId)));
+    assert.ok(!globex.some((r) => acme.some((a) => a._id === r._id)));
+    assert.equal((await call(G, 'GET', `/api/search?q=documentation&projectId=${acmeProject._id}`)).status, 404);
+    assert.equal((await call(B, 'GET', '/api/search?q=a')).status, 400, 'requête trop courte');
+  });
+
   console.log('Tableau de bord');
   await test('statistiques cohérentes avec les tâches, et isolées', async () => {
     const tasks = (await call(A, 'GET', `/api/projects/${acmeProject._id}/tasks`)).body;

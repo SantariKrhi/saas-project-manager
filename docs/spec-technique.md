@@ -212,6 +212,7 @@ Contrepartie assumée : pas de contraintes référentielles. Elles sont assurée
 | `tasks` | `{ companyId: 1, projectId: 1, status: 1, position: 1 }` | Board Kanban : tâches d'un projet, par colonne, triées |
 | `tasks` | `{ companyId: 1, assigneeId: 1, dueDate: 1 }` | « Mes tâches » : tâches d'une personne par échéance |
 | `tasks` | `{ companyId: 1, projectId: 1, dueDate: 1 }` | Calendrier : échéances d'un projet sur une plage de dates |
+| `tasks` | `{ companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" }` (français, pondéré) | Recherche plein texte (§ 11.6) |
 | `activities` | `{ companyId: 1, projectId: 1, at: -1 }` | Journal d'un projet, du plus récent au plus ancien |
 | `activities` | `{ at: 1 }` **TTL** (`expireAfterSeconds` = 90 jours) | Purge automatique des entrées anciennes (§ 11.3) |
 | `attachments.files` | `{ "metadata.companyId": 1, "metadata.taskId": 1 }` | Fichiers d'une tâche (suppressions en cascade) |
@@ -231,6 +232,7 @@ ils existent aussi sur une base déjà remplie. Si `ACTIVITY_TTL_DAYS` change, l
 | Calendrier (mois) | `IXSCAN companyId_1_projectId_1_dueDate_1` |
 | Journal d'activité | `IXSCAN companyId_1_projectId_1_at_-1` |
 | Pièces jointes d'une tâche | `IXSCAN metadata.companyId_1_metadata.taskId_1` |
+| Recherche plein texte | `TEXT_MATCH ← FETCH ← IXSCAN tasks_text` |
 
 Aucune requête de l'application ne fait de parcours complet de collection (`COLLSCAN`).
 
@@ -298,6 +300,7 @@ Préfixe `/api`, JSON. Authentification : `Authorization: Bearer <JWT>` sauf `/h
 | `DELETE /tasks/:id/attachments/:fileId` | membre / admin | Supprime le fichier et ses métadonnées |
 | `GET /projects/:id/activity?limit=&before=` | membre / admin | Journal, pagination par curseur sur la date |
 | `GET /me/tasks` | connecté | Tâches assignées à l'utilisateur, tous projets visibles |
+| `GET /search?q=&projectId=` | connecté | Recherche plein texte (2 à 100 caractères), 20 résultats triés par pertinence |
 | `GET /stats?projectId=` | connecté | Statistiques d'un projet ou de tous les projets visibles |
 
 Codes : `400` validation, `401` non authentifié, `403` rôle insuffisant, `404` introuvable ou hors périmètre,
@@ -429,3 +432,34 @@ charger le fichier entier en mémoire.
 
 `GET /projects/:id/tasks?dueFrom=2026-10-26&dueTo=2026-12-07` → `{ companyId, projectId, dueDate: { $gte, $lt } }`,
 servie par l'index `{ companyId: 1, projectId: 1, dueDate: 1 }` (IXSCAN borné, voir § 4).
+
+### 11.6 Recherche plein texte : index texte composé
+
+```js
+db.tasks.createIndex(
+  { companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" },
+  { name: "tasks_text", default_language: "french",
+    weights: { title: 10, labels: 5, description: 3, "checklist.text": 2, "comments.text": 1 } }
+)
+```
+
+```js
+db.tasks.aggregate([
+  { $match: { companyId, projectId: { $in: projectIds }, $text: { $search: "documentation" } } },
+  { $set: { score: { $meta: "textScore" } } },
+  { $sort: { score: -1 } }, { $limit: 20 },
+  { $lookup: /* nom du projet, limité à l'entreprise */ }
+])
+```
+
+- **Langue française** : racinisation (« documentations » trouve « documentation »), mots vides ignorés (« la », « de »),
+  insensibilité à la casse et aux accents (« ecrire » trouve « Écrire »).
+- **Pondération** : un mot du titre pèse 10 fois plus qu'un mot de commentaire ; les résultats sont triés par le
+  score de pertinence calculé par MongoDB (`$meta: "textScore"`).
+- **Index composé avec `companyId` en préfixe** : MongoDB **exige** alors une égalité sur `companyId` dans chaque
+  recherche. Une requête `$text` sans entreprise est refusée par la base (`NoQueryExecutionPlans`, vérifié) :
+  l'isolation est garantie par l'index lui-même, en plus des repositories. Le préfixe rend aussi l'index compatible
+  avec un sharding par `companyId`.
+- Un seul index texte est possible par collection : il couvre donc tous les champs utiles d'un coup.
+- Limite : pas de recherche par préfixe (« docu » ne trouve pas « documentation ») ni de tolérance aux fautes ;
+  ce serait le rôle d'Atlas Search / Lucene, hors du périmètre d'un MongoDB auto-hébergé.

@@ -166,6 +166,20 @@ function forCompany(db, companyId) {
       { $project: { comments: 0, noDue: 0, priorityRank: 0 } },
     ]).toArray(),
 
+    // --- Recherche plein texte : index texte français, résultats triés par score de pertinence.
+    search: (text, projectIds, limit = 20) => c('tasks').aggregate([
+      { $match: scope({ $text: { $search: text }, projectId: { $in: projectIds } }) },
+      { $set: { score: { $meta: 'textScore' } } },
+      { $sort: { score: -1, updatedAt: -1 } },
+      { $limit: limit },
+      lookupScoped('projects', 'projectId', 'project', { name: 1 }),
+      { $unwind: '$project' },
+      { $project: {
+        title: 1, status: 1, priority: 1, dueDate: 1, labels: 1, projectId: 1, assigneeId: 1, project: 1,
+        score: { $round: ['$score', 2] }, excerpt: { $substrCP: ['$description', 0, 140] },
+      } },
+    ]).toArray(),
+
     // --- Tableau de bord : un seul aller-retour, plusieurs agrégations parallèles via $facet.
     async stats(projectIds, { weeks = 8, timezone = 'Europe/Paris' } = {}) {
       const today = new Date(new Date().toDateString());

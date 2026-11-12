@@ -262,6 +262,35 @@ td.actions { text-align: right; }
 .checks .avatar { width: 22px; height: 22px; font-size: .62rem; }
 
 
+/* ------------------------------------------------------------------ recherche */
+.topbar nav { flex: none; }
+.search { position: relative; flex: 1; max-width: 380px; margin-left: auto; }
+.search > .icon { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search input { padding-left: 2.2rem; padding-right: 2.2rem; background: var(--bg); -webkit-appearance: none; appearance: none; }
+.search input::-webkit-search-cancel-button { display: none; }
+.search-kbd {
+  position: absolute; right: .6rem; top: 50%; transform: translateY(-50%); pointer-events: none;
+  font: 600 .72rem/1 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--muted);
+  border: 1px solid var(--field); border-radius: 4px; padding: .2rem .38rem;
+}
+.search input:focus ~ .search-kbd, .search input:not(:placeholder-shown) ~ .search-kbd { display: none; }
+.search-toggle { display: none; }
+.search-results {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; min-width: 340px; max-height: 62vh; overflow-y: auto;
+  margin: 0; padding: .35rem; list-style: none; z-index: 20;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+}
+.search-results [role=option] { display: flex; gap: .65rem; align-items: flex-start; padding: .55rem .65rem; border-radius: 6px; cursor: pointer; }
+.search-results [role=option][aria-selected=true] { background: var(--primary-tint); }
+.search-empty { padding: .8rem; color: var(--muted); font-size: .9rem; }
+.sr-main { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: .05rem; }
+.sr-title { font-weight: 600; }
+.sr-excerpt { font-size: .8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-results mark { background: color-mix(in srgb, var(--medium-edge) 30%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.dot-prio { width: 8px; height: 8px; border-radius: 50%; margin-top: .45rem; flex: none; background: var(--medium-edge); }
+.dot-prio.high { background: var(--high-edge); }
+.dot-prio.low { background: var(--low-edge); }
+
 /* ------------------------------------------------------------------ vue projet (onglets) */
 .view-tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 8px; margin-bottom: 1rem; }
 .view-tabs a { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .85rem; border-radius: 6px; color: var(--muted); font-weight: 500; transition: color .15s, background-color .15s; }
@@ -433,6 +462,14 @@ td.actions { text-align: right; }
   .filters { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .filters select { min-width: 0; width: 100%; }
   .nav-label { display: none; }
+  .search { flex: none; margin-left: auto; }
+  .search > .icon, .search input, .search-kbd { display: none; }
+  .search-toggle { display: inline-flex; }
+  .topbar.searching nav, .topbar.searching .user, .topbar.searching .brand { display: none; }
+  .topbar.searching .search { flex: 1; max-width: none; margin-left: 0; }
+  .topbar.searching .search > .icon, .topbar.searching .search input { display: block; }
+  .topbar.searching .search-toggle { display: none; }
+  .search-results { position: fixed; top: 60px; left: .5rem; right: .5rem; min-width: 0; }
   .view-tabs { display: flex; }
   .view-tabs a { flex: 1; justify-content: center; }
   .dash-grid { grid-template-columns: 1fr; }

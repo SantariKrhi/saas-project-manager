@@ -69,7 +69,7 @@ Une ressource d'une autre entreprise (ou d'un projet dont on n'est pas membre) r
 | `POST/PATCH/DELETE /api/tasks/:id/checklist[/:itemId]` | membre du projet / admin |
 | `POST /api/tasks/:id/attachments`, `GET /api/attachments/:fileId`, `DELETE /api/tasks/:id/attachments/:fileId` | membre du projet / admin |
 | `GET /api/projects/:id/activity` (pagination `?before=`) | membre du projet / admin |
-| `GET /api/me/tasks`, `GET /api/stats[?projectId=]` | connecté (projets visibles) |
+| `GET /api/me/tasks`, `GET /api/stats[?projectId=]`, `GET /api/search?q=` | connecté (projets visibles) |
 
 ## Tests
 
@@ -86,6 +86,7 @@ node tests/smoke.js
 - Checklist dans les tâches, pièces jointes (stockées dans MongoDB via GridFS)
 - Calendrier des échéances, vue « Mes tâches », journal d'activité (purgé par index TTL)
 - Tableau de bord statistique (aggregation pipeline)
+- Recherche plein texte en français (index texte MongoDB, raccourci « / »)
 - Thème clair / sombre, interface adaptée au mobile
 
 Détails : `docs/spec-fonctionnelle.md` et `docs/spec-technique.md` (§ 11 : fonctionnalités avancées MongoDB).

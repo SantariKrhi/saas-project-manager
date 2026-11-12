@@ -70,6 +70,7 @@ si la ressource n'existait pas (« introuvable »).
 | A14 | **Tableau de bord** | Indicateurs (tâches, terminées, en retard, non assignées) et graphiques : créées/terminées par semaine, avancement par projet ou par colonne, charge par personne, répartition par priorité ; pour un projet ou tous |
 | A15 | **Calendrier** | Vue mensuelle des échéances d'un projet ; glisser une tâche sur un jour fixe son échéance, la glisser dans « Sans échéance » la retire ; en liste sur mobile |
 | A16 | Thème clair / sombre | Automatique ou au choix, contrastes conformes WCAG AA |
+| A17 | **Recherche** | Barre de recherche dans l'en-tête (raccourci « / ») : retrouve une tâche par un mot de son titre, ses étiquettes, sa description, sa checklist ou ses commentaires ; tolère pluriels et accents ; résultats triés par pertinence, mots surlignés, navigation au clavier |
 
 ## 4. Règles de gestion
 
@@ -123,6 +124,7 @@ L'interface s'adapte aux petits écrans et au mode sombre.
 | Membre | voir toutes mes tâches, tous projets confondus, par urgence | savoir quoi faire en priorité |
 | Membre | voir les échéances du mois dans un calendrier et les déplacer | planifier facilement |
 | Membre | consulter l'historique d'un projet | savoir qui a fait quoi et quand |
+| Membre | retrouver une tâche en tapant un mot dont je me souviens | ne pas parcourir tous les projets |
 | Admin | suivre l'avancement et la charge de l'équipe dans un tableau de bord | repérer les retards et rééquilibrer |
 | Admin | retirer un collaborateur | qu'il perde l'accès et que ses tâches soient libérées |
 | Client SaaS | être certain que les autres entreprises ne voient rien de mes données | respecter la confidentialité |
@@ -137,5 +139,5 @@ L'interface s'adapte aux petits écrans et au mode sombre.
 
 ## 8. Hors périmètre
 
-Réinitialisation de mot de passe, notifications, recherche plein texte, facturation (le champ
+Réinitialisation de mot de passe, notifications, recherche par préfixe ou tolérante aux fautes de frappe, facturation (le champ
 `plan` est réservé), authentification externe (SSO), application mobile native.
