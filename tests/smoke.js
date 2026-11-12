@@ -130,6 +130,25 @@ const login = async (company, email) =>
     assert.equal(res.body.comments[0].userId, acmeBob.user.id);
   });
 
+  await test('renommer une colonne déplace ses tâches (y compris un échange de noms)', async () => {
+    const p = (await call(A, 'POST', '/api/projects', { name: 'Renommage', columns: ['a', 'b'] })).body;
+    const ta = (await call(A, 'POST', `/api/projects/${p._id}/tasks`, { title: 'ta', status: 'a' })).body;
+    const tb = (await call(A, 'POST', `/api/projects/${p._id}/tasks`, { title: 'tb', status: 'b' })).body;
+    // Renommer sans déclarer le renommage = supprimer une colonne non vide : refusé
+    assert.equal((await call(A, 'PATCH', `/api/projects/${p._id}`, { columns: ['À faire', 'b'] })).status, 409);
+    let res = await call(A, 'PATCH', `/api/projects/${p._id}`, { columns: ['À faire', 'b'], renamedColumns: [{ from: 'a', to: 'À faire' }] });
+    assert.equal(res.status, 200);
+    assert.equal((await call(A, 'GET', `/api/tasks/${ta._id}`)).body.status, 'À faire');
+    // Échange : chaque tâche suit sa colonne
+    res = await call(A, 'PATCH', `/api/projects/${p._id}`, { columns: ['b', 'À faire'], renamedColumns: [{ from: 'À faire', to: 'b' }, { from: 'b', to: 'À faire' }] });
+    assert.equal(res.status, 200);
+    assert.equal((await call(A, 'GET', `/api/tasks/${ta._id}`)).body.status, 'b');
+    assert.equal((await call(A, 'GET', `/api/tasks/${tb._id}`)).body.status, 'À faire');
+    // Fusion dans une colonne conservée : refusée
+    assert.equal((await call(A, 'PATCH', `/api/projects/${p._id}`, { columns: ['b'], renamedColumns: [{ from: 'À faire', to: 'b' }] })).status, 400);
+    await call(A, 'DELETE', `/api/projects/${p._id}`);
+  });
+
   console.log('Cascades');
   let extra, extraProject;
   await test('retirer un membre du projet le désassigne de ses tâches', async () => {

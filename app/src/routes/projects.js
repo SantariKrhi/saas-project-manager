@@ -18,6 +18,25 @@ function parseColumns(columns) {
   return cleaned;
 }
 
+// Renommages de colonnes { from, to } : `from` est une colonne actuelle, `to` une colonne de la nouvelle liste.
+// Les tâches de `from` passent dans `to`. Interdit de fusionner dans une colonne existante conservée.
+function parseRenames(raw, oldColumns, newColumns) {
+  if (!Array.isArray(raw)) throw badRequest('renamedColumns : tableau requis');
+  const renames = raw.map((r) => {
+    if (!r || !isStr(r.from) || !isStr(r.to)) throw badRequest('renamedColumns : { from, to } requis');
+    return { from: r.from.trim(), to: r.to.trim() };
+  }).filter((r) => r.from !== r.to);
+  const froms = renames.map((r) => r.from);
+  const tos = renames.map((r) => r.to);
+  if (new Set(froms).size !== froms.length || new Set(tos).size !== tos.length) throw badRequest('renamedColumns : doublons interdits');
+  for (const { from, to } of renames) {
+    if (!oldColumns.includes(from)) throw badRequest(`renamedColumns : colonne inconnue « ${from} »`);
+    if (!newColumns.includes(to)) throw badRequest(`renamedColumns : « ${to} » absente de columns`);
+    if (oldColumns.includes(to) && !froms.includes(to)) throw badRequest(`renamedColumns : « ${to} » existe déjà`);
+  }
+  return renames;
+}
+
 // Vérifie que tous les identifiants désignent des utilisateurs de l'entreprise courante.
 async function parseMemberIds(req, raw) {
   if (!Array.isArray(raw)) throw badRequest('memberIds : tableau requis');
@@ -52,19 +71,23 @@ router.post('/', requireAdmin, async (req, res) => {
 
 router.patch('/:id', requireAdmin, async (req, res) => {
   const project = await loadProject(req, req.params.id);
-  const { name, description, columns } = req.body || {};
+  const { name, description, columns, renamedColumns = [] } = req.body || {};
   const set = {};
+  let renames = [];
   if (name !== undefined) { if (!isStr(name)) throw badRequest('name invalide'); set.name = name.trim(); }
   if (description !== undefined) { if (typeof description !== 'string') throw badRequest('description invalide'); set.description = description; }
   if (columns !== undefined) {
     set.columns = parseColumns(columns);
-    // On ne supprime pas une colonne qui contient encore des tâches.
-    const removed = project.columns.filter((c) => !set.columns.includes(c));
+    renames = parseRenames(renamedColumns, project.columns, set.columns);
+    // On ne supprime pas une colonne qui contient encore des tâches (une colonne renommée n'est pas supprimée).
+    const renamed = renames.map((r) => r.from);
+    const removed = project.columns.filter((c) => !set.columns.includes(c) && !renamed.includes(c));
     if (removed.length && (await repo(req).tasks.countByStatuses(project._id, removed)) > 0) {
       throw new HttpError(409, 'Une colonne supprimée contient encore des tâches : déplacez-les d\'abord');
     }
   }
   if (!Object.keys(set).length) throw badRequest('Aucun champ à modifier');
+  if (renames.length) await repo(req).tasks.renameStatuses(project._id, renames);
   res.json(await repo(req).projects.update(project._id, set));
 });
 

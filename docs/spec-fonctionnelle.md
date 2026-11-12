@@ -53,10 +53,10 @@ si la ressource n'existait pas (« introuvable »).
 
 | # | Fonctionnalité | Détail |
 |---|---|---|
-| A1 | Colonnes personnalisables | L'admin définit les colonnes du projet (défaut : `todo`, `doing`, `review`, `done`) ; une colonne non vide ne peut pas être supprimée |
+| A1 | Colonnes personnalisables | L'admin ajoute, renomme, réordonne et supprime les colonnes du projet (défaut : `todo`, `doing`, `review`, `done`) ; renommer conserve les tâches ; une colonne non vide ne peut pas être supprimée |
 | A2 | Priorité | Haute / moyenne / basse, visible par la couleur de la carte |
 | A3 | Date d'échéance | Affichée sur la carte ; en rouge si dépassée et tâche non terminée |
-| A4 | Étiquettes | Mots-clés libres affichés sur la carte |
+| A4 | Étiquettes | Mots-clés libres, saisis en pastilles (Entrée pour ajouter), affichés sur la carte |
 | A5 | Commentaires | Fil de discussion par tâche (auteur, date) |
 | A6 | Filtres du Kanban | Par assigné et par priorité |
 | A7 | Ajout rapide | Saisie d'un titre en bas d'une colonne + Entrée |

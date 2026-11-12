@@ -41,6 +41,8 @@ const ICONS = {
   message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   arrowLeft: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  arrowUp: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+  arrowDown: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
@@ -63,11 +65,36 @@ function icon(name) {
 let idCounter = 0;
 const uid = (prefix = 'f') => `${prefix}${++idCounter}`;
 
-// Champ de formulaire avec son libellé associé (for / id).
-function field(label, control, hint) {
-  if (!control.id) control.id = uid();
-  return h('div', { class: 'field' }, h('label', { for: control.id }, label), control,
+// Champ de formulaire avec son libellé associé (for / id). `target` : élément focalisable visé par le libellé.
+function field(label, control, hint, target = control) {
+  if (!target.id) target.id = uid();
+  return h('div', { class: 'field' }, h('label', { for: target.id }, label), control,
     hint ? h('div', { class: 'hint' }, hint) : null);
+}
+
+// Saisie d'étiquettes en pastilles : Entrée ou virgule pour ajouter, retour arrière pour retirer la dernière.
+function tagInput(initial, placeholder) {
+  const tags = [...initial];
+  const input = h('input', { class: 'tag-entry', placeholder });
+  const wrap = h('div', { class: 'tag-input', onclick: (e) => { if (e.target === wrap) input.focus(); } });
+  const draw = () => {
+    wrap.replaceChildren(...tags.map((t, i) => h('span', { class: 'chip tag removable' }, t,
+      h('button', { type: 'button', 'aria-label': `Retirer l’étiquette ${t}`, onclick: () => { tags.splice(i, 1); draw(); input.focus(); } }, icon('x')))),
+    input);
+    input.placeholder = tags.length ? '' : placeholder;
+  };
+  const commit = () => {
+    input.value.split(',').map((t) => t.trim()).filter(Boolean).forEach((t) => { if (!tags.includes(t)) tags.push(t); });
+    input.value = '';
+    draw();
+  };
+  input.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) { e.preventDefault(); commit(); input.focus(); }
+    else if (e.key === 'Backspace' && !input.value && tags.length) { tags.pop(); draw(); input.focus(); }
+  });
+  input.addEventListener('blur', () => { if (input.value.trim()) commit(); });
+  draw();
+  return { el: wrap, input, values: () => { if (input.value.trim()) commit(); return [...tags]; } };
 }
 
 function toast(message, type = 'ok') {
@@ -481,7 +508,7 @@ async function viewBoard(projectId) {
       h('div', {}, h('h1', {}, project.name), project.description ? h('p', { class: 'muted', style: 'margin-top:.2rem' }, project.description) : null),
       h('span', { class: 'spacer' }),
       h('div', { class: 'filters' }, assigneeSel, prioSel,
-        me.role === 'admin' ? h('button', { class: 'btn', type: 'button', onclick: () => openProjectModal(project, users) }, icon('sliders'), 'Paramètres') : null)),
+        me.role === 'admin' ? h('button', { class: 'btn', type: 'button', onclick: () => safely(() => openProjectModal(project, users)) }, icon('sliders'), 'Paramètres') : null)),
     boardEl);
 }
 
@@ -496,7 +523,7 @@ function openTaskModal(task, ctx) {
     members.map((u) => h('option', { value: u._id, selected: u._id === task.assigneeId }, fullName(u))));
   const prio = h('select', {}, Object.entries(PRIO).map(([v, l]) => h('option', { value: v, selected: v === task.priority }, l)));
   const due = h('input', { type: 'date', value: task.dueDate ? task.dueDate.slice(0, 10) : '' });
-  const labels = h('input', { value: (task.labels || []).join(', '), placeholder: 'ex. front, urgent' });
+  const labels = tagInput(task.labels || [], 'Ajouter une étiquette puis Entrée');
 
   const commentsTitle = h('h3', {});
   const commentsList = h('div', {});
@@ -536,20 +563,20 @@ function openTaskModal(task, ctx) {
   const saveBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => withBusy(saveBtn, async () => {
     await api('PATCH', `/tasks/${task._id}`, {
       title: title.value, description: desc.value, assigneeId: assignee.value || null, priority: prio.value,
-      dueDate: due.value || null, labels: labels.value.split(',').map((l) => l.trim()).filter(Boolean),
+      dueDate: due.value || null, labels: labels.values(),
     });
     if (status.value !== task.status) await api('PATCH', `/tasks/${task._id}/move`, { status: status.value });
     close();
     toast('Tâche enregistrée');
     await reload();
   }) }, 'Enregistrer');
-  const deleteBtn = h('button', { class: 'btn danger', type: 'button', onclick: () => withBusy(deleteBtn, async () => {
+  const deleteBtn = h('button', { class: 'btn danger', type: 'button', 'aria-label': 'Supprimer la tâche', onclick: () => withBusy(deleteBtn, async () => {
     if (!confirm(`Supprimer la tâche « ${task.title} » ?`)) return;
     await api('DELETE', `/tasks/${task._id}`);
     close();
     toast('Tâche supprimée');
     await reload();
-  }) }, icon('trash'), 'Supprimer');
+  }) }, icon('trash'), h('span', { class: 'btn-label' }, 'Supprimer'));
 
   close = openModal({
     title: 'Modifier la tâche',
@@ -558,7 +585,7 @@ function openTaskModal(task, ctx) {
       field('Titre', title),
       field('Description', desc),
       h('div', { class: 'two' }, field('Statut', status), field('Assignée à', assignee), field('Priorité', prio), field('Échéance', due)),
-      field('Étiquettes', labels, 'Séparées par des virgules'),
+      field('Étiquettes', labels.el, null, labels.input),
       h('div', { class: 'comments' }, commentsTitle, commentsList, commentForm),
     ],
     foot: [deleteBtn, h('span', { class: 'spacer' }), h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Annuler'), saveBtn],
@@ -567,38 +594,87 @@ function openTaskModal(task, ctx) {
 
 // ---------------------------------------------------------------- modale projet (admin)
 
-function openProjectModal(project, users) {
+// Éditeur des colonnes du Kanban : une ligne par colonne (renommer, monter, descendre, supprimer).
+// Chaque ligne garde son nom d'origine pour transmettre les renommages à l'API.
+function columnEditor(columns, counts) {
+  const rows = columns.map((c) => ({ original: c, value: c }));
+  const list = h('div', { class: 'col-list' });
+
+  const draw = (focusIndex) => {
+    list.replaceChildren(...rows.map((row, i) => {
+      const n = row.original ? counts[row.original] || 0 : 0;
+      const input = h('input', { value: row.value, 'aria-label': `Nom de la colonne ${i + 1}`, placeholder: 'Nom de la colonne',
+        oninput: (e) => { row.value = e.target.value; } });
+      const move = (delta) => { [rows[i], rows[i + delta]] = [rows[i + delta], rows[i]]; draw(i + delta); };
+      return h('div', { class: 'col-row' },
+        h('span', { class: 'col-index', 'aria-hidden': 'true' }, i + 1),
+        input,
+        h('span', { class: 'col-count' }, row.original ? plural(n, 'tâche') : 'nouvelle'),
+        h('button', { class: 'btn ghost sm', type: 'button', 'aria-label': `Monter la colonne ${row.value}`, title: 'Monter', disabled: i === 0, onclick: () => move(-1) }, icon('arrowUp')),
+        h('button', { class: 'btn ghost sm', type: 'button', 'aria-label': `Descendre la colonne ${row.value}`, title: 'Descendre', disabled: i === rows.length - 1, onclick: () => move(1) }, icon('arrowDown')),
+        h('button', { class: 'btn ghost sm danger-ghost', type: 'button', 'aria-label': `Supprimer la colonne ${row.value}`,
+          title: n ? `Contient ${plural(n, 'tâche')} : déplacez-les d’abord` : 'Supprimer', disabled: n > 0 || rows.length === 1,
+          onclick: () => { rows.splice(i, 1); draw(Math.min(i, rows.length - 1)); } }, icon('trash')));
+    }));
+    if (focusIndex != null) {
+      const inputs = list.querySelectorAll('input');
+      if (inputs[focusIndex]) inputs[focusIndex].focus();
+    }
+  };
+  draw();
+
+  const addBtn = h('button', { class: 'btn ghost add-col', type: 'button', onclick: () => { rows.push({ original: null, value: '' }); draw(rows.length - 1); } },
+    icon('plus'), 'Ajouter une colonne');
+
+  // Renvoie { columns, renamedColumns } ou lève une erreur lisible.
+  const values = () => {
+    const names = rows.map((r) => r.value.trim());
+    if (names.some((n) => !n)) throw new Error('Chaque colonne doit avoir un nom');
+    if (new Set(names).size !== names.length) throw new Error('Deux colonnes ne peuvent pas avoir le même nom');
+    const renamedColumns = rows.filter((r) => r.original && r.original !== r.value.trim())
+      .map((r) => ({ from: r.original, to: r.value.trim() }));
+    return { columns: names, renamedColumns };
+  };
+  return { el: h('div', {}, list, addBtn), values };
+}
+
+async function openProjectModal(project, users) {
+  const tasks = await api('GET', `/projects/${project._id}/tasks`);
+  const counts = {};
+  tasks.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
+
   const name = h('input', { value: project.name, required: true });
   const desc = h('textarea', { rows: 3, value: project.description || '' });
-  const cols = h('input', { value: project.columns.join(', ') });
+  const editor = columnEditor(project.columns, counts);
   const boxes = users.map((u) => h('input', { type: 'checkbox', value: u._id, checked: project.memberIds.includes(u._id) }));
   const checks = h('div', { class: 'checks', role: 'group', 'aria-label': 'Membres du projet' },
     users.map((u, i) => h('label', {}, boxes[i], avatar(u), h('span', {}, fullName(u), ' ', h('small', {}, u.email)))));
 
   let close = () => {};
   const saveBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => withBusy(saveBtn, async () => {
-    await api('PATCH', `/projects/${project._id}`, {
-      name: name.value, description: desc.value, columns: cols.value.split(',').map((c) => c.trim()).filter(Boolean),
-    });
+    const { columns, renamedColumns } = editor.values();
+    await api('PATCH', `/projects/${project._id}`, { name: name.value, description: desc.value, columns, renamedColumns });
     await api('PUT', `/projects/${project._id}/members`, { memberIds: boxes.filter((b) => b.checked).map((b) => b.value) });
     close();
     toast('Projet enregistré');
     await route();
   }) }, 'Enregistrer');
-  const deleteBtn = h('button', { class: 'btn danger', type: 'button', onclick: () => withBusy(deleteBtn, async () => {
+  const deleteBtn = h('button', { class: 'btn danger', type: 'button', 'aria-label': 'Supprimer le projet', onclick: () => withBusy(deleteBtn, async () => {
     if (!confirm(`Supprimer le projet « ${project.name} » et toutes ses tâches ?`)) return;
     await api('DELETE', `/projects/${project._id}`);
     close();
     toast('Projet supprimé');
     location.hash = '#/projects';
-  }) }, icon('trash'), 'Supprimer le projet');
+  }) }, icon('trash'), h('span', { class: 'btn-label' }, 'Supprimer le projet'));
 
   close = openModal({
     title: 'Paramètres du projet',
     body: [
       field('Nom', name),
       field('Description', desc),
-      field('Colonnes du Kanban', cols, 'Dans l’ordre, séparées par des virgules. Une colonne qui contient des tâches ne peut pas être supprimée.'),
+      h('div', { class: 'field' }, h('span', { class: 'label-text' }, 'Colonnes du Kanban'),
+        h('div', { class: 'hint', style: 'margin:0 0 .5rem' }, 'Dans l’ordre d’affichage. Renommer une colonne y conserve ses tâches.'),
+        editor.el),
       h('div', { class: 'field' }, h('span', { class: 'label-text' }, 'Membres'), checks),
     ],
     foot: [deleteBtn, h('span', { class: 'spacer' }), h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Annuler'), saveBtn],

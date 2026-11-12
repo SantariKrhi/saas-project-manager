@@ -182,6 +182,7 @@ MongoDB n'impose pas de clés étrangères ; l'application s'en charge (`reposit
 | Projet | Toutes ses tâches sont supprimées |
 | Entreprise | Tâches, projets, utilisateurs puis l'entreprise (confirmation par le slug) |
 | Colonne d'un projet | Refusée (409) si elle contient encore des tâches |
+| Renommage d'une colonne | Ses tâches suivent (`renamedColumns: [{ from, to }]`), y compris l'échange de deux noms ; fusion dans une colonne existante refusée (400) |
 
 Garde-fous : on ne peut pas supprimer son propre compte ni retirer le dernier administrateur.
 Ces opérations multiples ne sont **pas transactionnelles** (instance MongoDB seule) ; en Partie II, avec un
@@ -201,7 +202,7 @@ Préfixe `/api`, JSON. Authentification : `Authorization: Bearer <JWT>` sauf `/h
 | `GET /users`, `GET /users/:id` | connecté | Utilisateurs de l'entreprise |
 | `POST /users`, `PATCH /users/:id`, `DELETE /users/:id` | admin | Gestion des utilisateurs |
 | `GET /projects`, `GET /projects/:id` | connecté | Admin : tous ; membre : ses projets |
-| `POST /projects`, `PATCH /projects/:id`, `DELETE /projects/:id` | admin | Gestion des projets |
+| `POST /projects`, `PATCH /projects/:id`, `DELETE /projects/:id` | admin | Gestion des projets (`PATCH` accepte `renamedColumns` pour renommer des colonnes sans perdre leurs tâches) |
 | `PUT /projects/:id/members` | admin | Remplace la liste `memberIds` |
 | `GET /projects/:id/board` | membre / admin | Tâches groupées par colonne ; filtres `assigneeId`, `priority` |
 | `GET`, `POST /projects/:id/tasks` | membre / admin | Liste, création |

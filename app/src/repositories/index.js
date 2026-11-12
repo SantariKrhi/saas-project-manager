@@ -78,6 +78,12 @@ function forCompany(db, companyId) {
       return deletedCount > 0;
     },
     countByStatuses: (projectId, statuses) => c('tasks').countDocuments(scope({ projectId, status: { $in: statuses } })),
+    // Renommage de colonnes : passage par un statut temporaire pour gérer les échanges (a -> b et b -> a).
+    async renameStatuses(projectId, renames) {
+      const tmp = renames.map((r, i) => ({ ...r, tmp: `__renommage_${Date.now()}_${i}` }));
+      for (const r of tmp) await c('tasks').updateMany(scope({ projectId, status: r.from }), { $set: { status: r.tmp } });
+      for (const r of tmp) await c('tasks').updateMany(scope({ projectId, status: r.tmp }), { $set: { status: r.to, updatedAt: new Date() } });
+    },
     async nextPosition(projectId, status) {
       const [last] = await c('tasks').find(scope({ projectId, status })).sort({ position: -1 }).limit(1).toArray();
       return last ? last.position + 1024 : 1024;
