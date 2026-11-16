@@ -94,8 +94,8 @@ si la ressource n'existait pas (« introuvable »).
 |---|---|
 | **Connexion / Nouvelle entreprise** | Onglets : connexion (entreprise, email, mot de passe) ou création (nom d'entreprise, prénom, nom, email, mot de passe) |
 | **Projets** | Cartes des projets accessibles ; formulaire de création (admin) |
-| **Kanban d'un projet** | Colonnes, cartes, filtres, ajout rapide, bouton « Paramètres » (admin) |
-| **Fenêtre tâche** | Titre, description, statut, assigné, priorité, échéance, étiquettes, suppression, commentaires |
+| **Kanban d'un projet** | Colonnes, cartes, filtres, ajout rapide ; bascule Kanban / Calendrier ; boutons « Activité » et « Paramètres » (admin) |
+| **Fenêtre tâche** | Titre, description, statut, assigné, priorité, échéance, étiquettes, checklist, pièces jointes, commentaires, suppression |
 | **Paramètres du projet** (admin) | Nom, description, colonnes, membres (cases à cocher), suppression |
 | **Calendrier d'un projet** | Mois en grille (liste sur mobile), tâches sans échéance à côté, glisser-déposer pour changer l'échéance |
 | **Activité** (panneau) | Historique du projet groupé par jour, « Voir plus » pour remonter le temps |
@@ -103,7 +103,8 @@ si la ressource n'existait pas (« introuvable »).
 | **Tableau de bord** | Indicateurs et graphiques, choix « tous mes projets » ou un projet |
 | **Équipe** (admin) | Tableau des utilisateurs, ajout, changement de rôle, suppression |
 
-Navigation : barre supérieure (nom de l'entreprise, Projets, Équipe pour les admins, utilisateur, déconnexion).
+Navigation : barre supérieure (nom de l'entreprise, Projets, Mes tâches, Tableau de bord, Équipe pour les admins,
+recherche, utilisateur, thème, déconnexion).
 L'interface s'adapte aux petits écrans et au mode sombre.
 
 ## 6. User stories

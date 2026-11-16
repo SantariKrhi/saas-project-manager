@@ -9,12 +9,12 @@ et la préparation à la réplication / au sharding (Partie II du TD).
 ```
 Navigateur ──HTTP──▶ app (Node 20 + Express 5) ──driver MongoDB──▶ mongo (MongoDB 7)
                       │ sert l'API REST (/api) et l'interface statique (/)
-                      └ MONGO_URI, MONGO_DB, JWT_SECRET, PORT : variables d'environnement
+                      └ MONGO_URI, MONGO_DB, JWT_SECRET, ACTIVITY_TTL_DAYS : variables d'environnement
 ```
 
 | Élément | Choix |
 |---|---|
-| Base | MongoDB 7, base `saas`, 4 collections |
+| Base | MongoDB 7, base `saas`, 5 collections métier + 2 collections GridFS (pièces jointes) |
 | Back | Node.js 20, Express 5, driver officiel `mongodb` 6 (pas d'ODM : le modèle est explicite) |
 | Auth | JWT (HS256, 8 h) + mots de passe hachés `bcryptjs` |
 | Front | HTML / CSS / JS sans framework ni build, servi par Express, Kanban en drag & drop natif (HTML5) |
@@ -25,7 +25,7 @@ Organisation du code (`app/src`) :
 | Dossier | Rôle |
 |---|---|
 | `config.js`, `db.js` | Configuration par variables d'environnement ; connexion avec retry |
-| `repositories/index.js` | **Seul** accès aux collections métier ; chaque repository est lié à un `companyId` |
+| `repositories/index.js` | **Seul** accès aux collections métier : `forCompany` (lié à un `companyId`) et `accounts` (inscription / connexion, §5) |
 | `middleware/auth.js` | Vérification du JWT, chargement du rôle, `requireAdmin` |
 | `lib/access.js`, `lib/http.js` | Contrôle d'accès aux projets, erreurs HTTP, validation des identifiants et des emails |
 | `lib/passwords.js`, `lib/constants.js` | Règle unique des mots de passe (longueur, bcrypt) ; rôles, priorités |
@@ -126,13 +126,13 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
 | Champ | Règle |
 |---|---|
 | `status` | Doit appartenir à `project.columns` (contrôlé par l'API) |
-| `position` | Nombre ; ordre dans la colonne. Insertion entre deux cartes = moyenne de leurs positions (pas de renumérotation) ; en fin de colonne = dernière + 1024 |
+| `position` | Nombre ; ordre dans la colonne. Insertion entre deux cartes = moyenne de leurs positions, calculée par l'interface (pas de renumérotation) ; sans position fournie, l'API place la carte en fin de colonne (dernière + 1024) |
 | `assigneeId` | `null` ou membre du projet (même entreprise) |
 | `priority` | `low` \| `medium` \| `high` |
 | `dueDate` | `null` ou date (stockée à minuit UTC : c'est une date de calendrier) |
-| `checklist` | Sous-éléments `{ _id, text, done }` ; chacun a son propre `_id` pour être modifié individuellement (§ 11.1) |
-| `attachments` | Métadonnées des pièces jointes ; `_id` = identifiant du fichier dans GridFS (§ 11.4) |
-| `completedAt` | Posée quand la tâche arrive dans la dernière colonne, remise à `null` si elle en ressort (statistiques § 11.2) |
+| `checklist` | Sous-éléments `{ _id, text, done }` ; chacun a son propre `_id` pour être modifié individuellement (§ 10.1) |
+| `attachments` | Métadonnées des pièces jointes ; `_id` = identifiant du fichier dans GridFS (§ 10.4) |
+| `completedAt` | Posée quand la tâche arrive dans la dernière colonne, remise à `null` si elle en ressort (statistiques § 10.2) |
 
 ### 2.5 `activities` (journal d'activité)
 
@@ -213,9 +213,9 @@ Contrepartie assumée : pas de contraintes référentielles. Elles sont assurée
 | `tasks` | `{ companyId: 1, projectId: 1, status: 1, position: 1 }` | Board Kanban : tâches d'un projet, par colonne, triées |
 | `tasks` | `{ companyId: 1, assigneeId: 1, dueDate: 1 }` | « Mes tâches » : tâches d'une personne par échéance |
 | `tasks` | `{ companyId: 1, projectId: 1, dueDate: 1 }` | Calendrier : échéances d'un projet sur une plage de dates |
-| `tasks` | `{ companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" }` (français, pondéré) | Recherche plein texte (§ 11.6) |
+| `tasks` | `{ companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" }` (français, pondéré) | Recherche plein texte (§ 10.6) |
 | `activities` | `{ companyId: 1, projectId: 1, at: -1 }` | Journal d'un projet, du plus récent au plus ancien |
-| `activities` | `{ at: 1 }` **TTL** (`expireAfterSeconds` = 90 jours) | Purge automatique des entrées anciennes (§ 11.3) |
+| `activities` | `{ at: 1 }` **TTL** (`expireAfterSeconds` = 90 jours) | Purge automatique des entrées anciennes (§ 10.3) |
 | `attachments.files` | `{ "metadata.companyId": 1, "metadata.taskId": 1 }` | Fichiers d'une tâche (suppressions en cascade) |
 
 `companyId` est toujours le **préfixe** des index : les requêtes sont ciblées sur une entreprise et l'index
@@ -247,6 +247,9 @@ Isolation logicielle stricte, en défense en profondeur :
 2. **Repositories liés à une entreprise** : `forCompany(db, companyId)` renvoie des fonctions qui injectent
    `companyId` dans chaque filtre (`find`, `findOne`, `update*`, `delete*`), placé en dernier dans l'objet de filtre
    pour ne pas pouvoir être écrasé. Les routes n'appellent jamais `db.collection()` directement.
+   Seule exception, `accounts` : avant authentification, l'entreprise n'est pas encore connue. Il se limite à deux
+   opérations, la connexion (entreprise par `slug`, puis utilisateur **de cette entreprise**) et l'inscription
+   (création de l'entreprise et de son premier admin).
 3. **Lectures croisées impossibles par construction** : un identifiant d'une autre entreprise ne correspond à aucun
    document du périmètre → réponse **404** (et non 403) : l'existence de la ressource n'est pas révélée.
 4. **Références validées** : membres d'un projet et assigné d'une tâche doivent exister dans l'entreprise courante
@@ -316,7 +319,7 @@ Codes : `400` validation, `401` non authentifié, `403` rôle insuffisant, `404`
 | `MONGO_DB` | `saas` | Nom de la base |
 | `JWT_SECRET` | `dev-secret-change-me` | Secret de signature (à changer en production) |
 | `ACTIVITY_TTL_DAYS` | `90` | Durée de conservation du journal d'activité (index TTL) |
-| `PORT` / `APP_PORT` | `3000` | Port de l'app / port exposé |
+| `APP_PORT` | `3000` | Port exposé sur la machine (l'app écoute sur 3000 dans son conteneur) |
 
 Aucune adresse ni option de connexion n'est écrite en dur : tout passe par `MONGO_URI` (lue dans `config.js`,
 utilisée telle quelle par `MongoClient`). `db.js` réessaie la connexion 10 fois (2 s d'intervalle).
@@ -351,20 +354,9 @@ les index commencent par `companyId`, l'unicité de l'email est par entreprise. 
 `sh.shardCollection` après création des index, l'unicité de `slug` (collection non shardée, donc inchangée),
 et l'usage de transactions pour les cascades (section 6).
 
-## 10. Limites connues
+## 10. Fonctionnalités avancées MongoDB
 
-- Pas de réinitialisation de mot de passe ni de vérification d'email.
-- JWT de 8 h, sans liste de révocation (la suppression/modification de l'utilisateur est toutefois prise en compte immédiatement, cf. §5.5).
-- Cascades non transactionnelles tant que MongoDB est en instance seule.
-- Positions des cartes en nombres flottants : après un très grand nombre d'insertions successives au même endroit,
-  une renumérotation de la colonne deviendrait nécessaire (non implémentée).
-- Pas de limitation de débit (rate limiting) sur le login.
-- Pas d'antivirus sur les pièces jointes ; elles sont servies en téléchargement uniquement (jamais affichées par le navigateur),
-  avec `X-Content-Type-Options: nosniff` et une CSP `sandbox`.
-
-## 11. Fonctionnalités avancées MongoDB
-
-### 11.1 Checklist : mise à jour ciblée d'un élément de tableau
+### 10.1 Checklist : mise à jour ciblée d'un élément de tableau
 
 Cocher un élément modifie **uniquement** cet élément, côté base, sans relire ni réécrire le tableau :
 
@@ -379,7 +371,7 @@ db.tasks.findOneAndUpdate(
 Ajout : `$push` ; suppression : `$pull: { checklist: { _id: itemId } }`. Deux personnes qui cochent deux éléments
 différents en même temps ne s'écrasent pas (chaque mise à jour est atomique sur le document).
 
-### 11.2 Tableau de bord et « Mes tâches » : aggregation pipeline
+### 10.2 Tableau de bord et « Mes tâches » : aggregation pipeline
 
 Les statistiques sont calculées **par la base, en un seul aller-retour**, grâce à `$facet` qui exécute plusieurs
 sous-pipelines sur le même jeu de tâches (`repositories/index.js`, `tasks.stats`) :
@@ -412,7 +404,7 @@ sous-pipelines sur le même jeu de tâches (`repositories/index.js`, `tasks.stat
 du projet, puis un tri calculé en base (non terminées d'abord, échéance croissante avec les tâches sans échéance
 en dernier, puis priorité via `$switch`).
 
-### 11.3 Journal d'activité : index TTL
+### 10.3 Journal d'activité : index TTL
 
 ```js
 db.activities.createIndex({ at: 1 }, { expireAfterSeconds: 90 * 24 * 3600, name: "activities_ttl" })
@@ -423,7 +415,7 @@ toutes les 60 s) : aucune tâche planifiée à écrire, et la collection ne gros
 réglable par `ACTIVITY_TTL_DAYS`. Lecture paginée par **curseur** (`?before=<date>`) plutôt que par `skip`, qui
 resterait coûteux sur un long historique.
 
-### 11.4 Pièces jointes : GridFS
+### 10.4 Pièces jointes : GridFS
 
 Les fichiers sont stockés dans MongoDB via `GridFSBucket` : découpés en morceaux de 255 Ko (`attachments.chunks`),
 décrits dans `attachments.files`. Avantages ici : une seule base à sauvegarder et à répliquer (Partie II),
@@ -431,12 +423,12 @@ pas de volume disque partagé entre instances de l'application, isolation par `m
 en cascade par requête sur les métadonnées. Le téléchargement est diffusé en flux (`stream.pipeline`) sans
 charger le fichier entier en mémoire.
 
-### 11.5 Calendrier : requête par plage sur un index
+### 10.5 Calendrier : requête par plage sur un index
 
 `GET /projects/:id/tasks?dueFrom=2026-10-26&dueTo=2026-12-07` → `{ companyId, projectId, dueDate: { $gte, $lt } }`,
 servie par l'index `{ companyId: 1, projectId: 1, dueDate: 1 }` (IXSCAN borné, voir § 4).
 
-### 11.6 Recherche plein texte : index texte composé
+### 10.6 Recherche plein texte : index texte composé
 
 ```js
 db.tasks.createIndex(
@@ -466,3 +458,14 @@ db.tasks.aggregate([
 - Un seul index texte est possible par collection : il couvre donc tous les champs utiles d'un coup.
 - Limite : pas de recherche par préfixe (« docu » ne trouve pas « documentation ») ni de tolérance aux fautes ;
   ce serait le rôle d'Atlas Search / Lucene, hors du périmètre d'un MongoDB auto-hébergé.
+
+## 11. Limites connues
+
+- Pas de réinitialisation de mot de passe ni de vérification d'email.
+- JWT de 8 h, sans liste de révocation (la suppression/modification de l'utilisateur est toutefois prise en compte immédiatement, cf. §5.5).
+- Cascades non transactionnelles tant que MongoDB est en instance seule.
+- Positions des cartes en nombres flottants : après un très grand nombre d'insertions successives au même endroit,
+  une renumérotation de la colonne deviendrait nécessaire (non implémentée).
+- Pas de limitation de débit (rate limiting) sur le login.
+- Pas d'antivirus sur les pièces jointes ; elles sont servies en téléchargement uniquement (jamais affichées par le navigateur),
+  avec `X-Content-Type-Options: nosniff` et une CSP `sandbox`.
