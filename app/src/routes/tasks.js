@@ -6,11 +6,11 @@ const { repo } = require('../repositories');
 const { loadProject } = require('../lib/access');
 const { logActivity } = require('../lib/activity');
 const { HttpError, notFound, badRequest, idParam, toId, isStr } = require('../lib/http');
+const { PRIORITIES } = require('../lib/constants');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const PRIORITIES = ['low', 'medium', 'high'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 20;
 const MAX_CHECKLIST = 50;

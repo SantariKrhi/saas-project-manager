@@ -1,14 +1,12 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { repo } = require('../repositories');
-const { HttpError, notFound, badRequest, idParam, isStr } = require('../lib/http');
+const { HttpError, notFound, badRequest, idParam, isStr, isEmail, normalizeEmail } = require('../lib/http');
+const { hashPassword } = require('../lib/passwords');
+const { ROLES } = require('../lib/constants');
 
 const router = express.Router();
 router.use(requireAuth);
-
-const ROLES = ['admin', 'member'];
-const isEmail = (v) => isStr(v) && /^[^@\s]+@[^@\s]+$/.test(v.trim());
 
 // Tous les utilisateurs authentifiés peuvent lister leurs collègues (nécessaire pour les assignations).
 router.get('/', async (req, res) => {
@@ -26,11 +24,11 @@ router.post('/', requireAdmin, async (req, res) => {
   if (!isEmail(email) || !isStr(firstName) || !isStr(lastName) || !isStr(password)) {
     throw badRequest('email, password, firstName, lastName requis');
   }
-  if (password.length < 8) throw badRequest('Mot de passe : 8 caractères minimum');
   if (!ROLES.includes(role)) throw badRequest('role invalide');
+  const passwordHash = await hashPassword(password);
   try {
-    const user = await repo(req).users.create({ email: email.trim().toLowerCase(),
-      passwordHash: await bcrypt.hash(password, 10), firstName: firstName.trim(), lastName: lastName.trim(), role });
+    const user = await repo(req).users.create({ email: normalizeEmail(email),
+      passwordHash, firstName: firstName.trim(), lastName: lastName.trim(), role });
     res.status(201).json(user);
   } catch (err) {
     if (err.code === 11000) throw new HttpError(409, 'Email déjà utilisé dans cette entreprise');
@@ -46,13 +44,10 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 
   const { email, password, firstName, lastName, role } = req.body || {};
   const set = {};
-  if (email !== undefined) { if (!isEmail(email)) throw badRequest('email invalide'); set.email = email.trim().toLowerCase(); }
+  if (email !== undefined) { if (!isEmail(email)) throw badRequest('email invalide'); set.email = normalizeEmail(email); }
   if (firstName !== undefined) { if (!isStr(firstName)) throw badRequest('firstName invalide'); set.firstName = firstName.trim(); }
   if (lastName !== undefined) { if (!isStr(lastName)) throw badRequest('lastName invalide'); set.lastName = lastName.trim(); }
-  if (password !== undefined) {
-    if (!isStr(password) || password.length < 8) throw badRequest('Mot de passe : 8 caractères minimum');
-    set.passwordHash = await bcrypt.hash(password, 10);
-  }
+  if (password !== undefined) set.passwordHash = await hashPassword(password);
   if (role !== undefined) {
     if (!ROLES.includes(role)) throw badRequest('role invalide');
     if (role === 'member' && target.role === 'admin' && (await r.users.countAdmins()) <= 1) {

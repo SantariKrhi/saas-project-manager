@@ -1,8 +1,8 @@
-const bcrypt = require('bcryptjs');
 const { ObjectId } = require('mongodb');
+const { DAY_MS: DAY } = require('./lib/constants');
+const { hashPassword } = require('./lib/passwords');
 
 const DEMO_PASSWORD = 'demo1234';
-const DAY = 24 * 60 * 60 * 1000;
 
 // Dates relatives à aujourd'hui : le jeu de démo reste « vivant » (retards, échéances à venir, historique).
 const today = () => new Date(new Date().toDateString());
@@ -42,7 +42,7 @@ const SITE_TASKS = [
 async function seed(db) {
   if ((await db.collection('companies').countDocuments()) > 0) return;
 
-  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
 
   for (const [name, slug] of [['Acme', 'acme'], ['Globex', 'globex']]) {
     const companyId = new ObjectId();

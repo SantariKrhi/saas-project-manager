@@ -20,5 +20,7 @@ function idParam(v) {
 }
 
 const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
+const isEmail = (v) => isStr(v) && /^[^@\s]+@[^@\s]+$/.test(v.trim());
+const normalizeEmail = (v) => v.trim().toLowerCase();
 
-module.exports = { HttpError, notFound, badRequest, toId, idParam, isStr };
+module.exports = { HttpError, notFound, badRequest, toId, idParam, isStr, isEmail, normalizeEmail };

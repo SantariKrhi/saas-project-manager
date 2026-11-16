@@ -27,17 +27,18 @@ Organisation du code (`app/src`) :
 | `config.js`, `db.js` | Configuration par variables d'environnement ; connexion avec retry |
 | `repositories/index.js` | **Seul** accès aux collections métier ; chaque repository est lié à un `companyId` |
 | `middleware/auth.js` | Vérification du JWT, chargement du rôle, `requireAdmin` |
-| `lib/access.js`, `lib/http.js` | Contrôle d'accès aux projets, erreurs HTTP, validation des identifiants |
+| `lib/access.js`, `lib/http.js` | Contrôle d'accès aux projets, erreurs HTTP, validation des identifiants et des emails |
+| `lib/passwords.js`, `lib/constants.js` | Règle unique des mots de passe (longueur, bcrypt) ; rôles, priorités |
 | `routes/*.js` | `auth`, `company`, `users`, `projects`, `tasks` (+ board, checklist, pièces jointes, journal), `insights` (mes tâches, statistiques) |
-| `indexes.js` | Création des index au démarrage (dont TTL) |
+| `validators.js`, `indexes.js` | Validators `$jsonSchema` puis index (dont TTL), appliqués au démarrage |
 | `lib/activity.js` | Écriture dans le journal d'activité |
 | `seed.js` | Jeu de données de démo (uniquement si la base est vide) |
-| `public/` | Interface web |
+| `public/js/` | Interface web en modules ES natifs : `main.js` (entrée), `router.js`, `api.js`, `views/` (une page par fichier), `components/` (modales, recherche, graphiques) |
 
 ## 2. Modèle de données
 
 Principe : **une collection par entité, liées par références (`ObjectId`)**, et un champ `companyId` présent dans
-**chaque** document métier. Les types sont imposés par un validator `$jsonSchema` (`mongo-init/init.js`).
+**chaque** document métier. Les types sont imposés par un validator `$jsonSchema` (`app/src/validators.js`).
 
 ### 2.1 `companies`
 
@@ -220,7 +221,8 @@ Contrepartie assumée : pas de contraintes référentielles. Elles sont assurée
 `companyId` est toujours le **préfixe** des index : les requêtes sont ciblées sur une entreprise et l'index
 reste utilisable tel quel en environnement shardé. Un index `_id` implicite existe sur chaque collection.
 
-Les index sont créés **par l'application à chaque démarrage** (`app/src/indexes.js`, `createIndex` est idempotent) :
+Les validators puis les index sont appliqués **par l'application à chaque démarrage** (`app/src/validators.js` :
+`createCollection` ou `collMod` ; `app/src/indexes.js` : `createIndex` est idempotent) :
 ils existent aussi sur une base déjà remplie. Si `ACTIVITY_TTL_DAYS` change, l'index TTL est ajusté par `collMod`.
 
 **Vérification avec `explain()`** (plan gagnant de chaque requête, sur le jeu de démo) :
@@ -318,8 +320,9 @@ Codes : `400` validation, `401` non authentifié, `403` rôle insuffisant, `404`
 
 Aucune adresse ni option de connexion n'est écrite en dur : tout passe par `MONGO_URI` (lue dans `config.js`,
 utilisée telle quelle par `MongoClient`). `db.js` réessaie la connexion 10 fois (2 s d'intervalle).
-Le script `mongo-init/init.js` (validators + index) s'exécute au premier démarrage du volume ; le seed de démo
-est inséré par l'application si la base est vide. Remise à zéro : `docker compose down -v`.
+Au démarrage, l'application applique les validators et les index (aucun script d'initialisation côté Mongo :
+un script `docker-entrypoint-initdb.d` ne serait pas exécuté sur un replica set ou un cluster shardé), puis insère
+le seed de démo si la base est vide. Remise à zéro : `docker compose down -v`.
 
 ## 9. Préparation à la réplication et au sharding (Partie II)
 

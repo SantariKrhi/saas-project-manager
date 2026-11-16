@@ -3,6 +3,7 @@ const express = require('express');
 const config = require('./config');
 const { connect, getDb } = require('./db');
 const { seed } = require('./seed');
+const { ensureValidators } = require('./validators');
 const { ensureIndexes } = require('./indexes');
 const { HttpError } = require('./lib/http');
 
@@ -40,7 +41,8 @@ app.use((err, req, res, next) => {
 });
 
 connect()
-  .then(async (db) => { await ensureIndexes(db); await seed(db); })
+  // Ordre important : validators, puis index, puis seed (sinon les collections seraient créées sans validator).
+  .then(async (db) => { await ensureValidators(db); await ensureIndexes(db); await seed(db); })
   .then(() => app.listen(config.port, () => console.log(`API sur le port ${config.port}`)))
   .catch((err) => {
     console.error(err);

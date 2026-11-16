@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 const config = require('../config');
 const { getDb } = require('../db');
 const { forCompany } = require('../repositories');
+const { HttpError } = require('../lib/http');
 
 function signToken(user) {
   return jwt.sign(
@@ -15,25 +16,27 @@ function signToken(user) {
 // Le companyId vient UNIQUEMENT du token signé, jamais du body ni des paramètres.
 // L'existence de l'utilisateur et son rôle sont relus en base à chaque requête : un utilisateur
 // supprimé perd immédiatement l'accès et un changement de rôle est effectif sans nouveau login.
+// Les erreurs levées ici sont transmises par Express 5 au gestionnaire d'erreurs, comme dans les routes.
 async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'Authentification requise' });
+  if (!token) throw new HttpError(401, 'Authentification requise');
   let auth;
   try {
     const payload = jwt.verify(token, config.jwtSecret);
     auth = { userId: new ObjectId(payload.sub), companyId: new ObjectId(payload.companyId) };
   } catch {
-    return res.status(401).json({ error: 'Token invalide ou expiré' });
+    throw new HttpError(401, 'Token invalide ou expiré');
   }
   const user = await forCompany(getDb(), auth.companyId).users.get(auth.userId);
-  if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
+  if (!user) throw new HttpError(401, 'Utilisateur introuvable');
   req.auth = { ...auth, role: user.role };
+  req.user = user; // sans passwordHash (projection du repository)
   next();
 }
 
 function requireAdmin(req, res, next) {
-  if (req.auth.role !== 'admin') return res.status(403).json({ error: 'Réservé aux administrateurs' });
+  if (req.auth.role !== 'admin') throw new HttpError(403, 'Réservé aux administrateurs');
   next();
 }
 

@@ -1,8 +1,8 @@
-// Exécuté automatiquement au premier démarrage de Mongo (volume vide).
-// Crée les collections avec leurs validators $jsonSchema.
-// Pour rejouer : docker compose down -v
-const database = db.getSiblingDB('saas');
+const { PRIORITIES, ROLES } = require('./lib/constants');
 
+// Validators $jsonSchema, appliqués par l'application à chaque démarrage (comme les index) :
+// ils suivent MONGO_DB et fonctionnent aussi derrière un replica set ou un mongos (Partie II),
+// là où un script docker-entrypoint-initdb.d ne serait jamais exécuté.
 const schemas = {
   companies: {
     bsonType: 'object',
@@ -23,7 +23,7 @@ const schemas = {
       passwordHash: { bsonType: 'string' },
       firstName: { bsonType: 'string' },
       lastName: { bsonType: 'string' },
-      role: { enum: ['admin', 'member'] },
+      role: { enum: ROLES },
       createdAt: { bsonType: 'date' },
     },
   },
@@ -51,7 +51,7 @@ const schemas = {
       status: { bsonType: 'string' },
       position: { bsonType: ['int', 'long', 'double'] },
       assigneeId: { bsonType: ['objectId', 'null'] },
-      priority: { enum: ['low', 'medium', 'high'] },
+      priority: { enum: PRIORITIES },
       dueDate: { bsonType: ['date', 'null'] },
       labels: { bsonType: 'array', items: { bsonType: 'string' } },
       comments: {
@@ -110,8 +110,18 @@ const schemas = {
   },
 };
 
-Object.entries(schemas).forEach(([name, schema]) => {
-  database.createCollection(name, { validator: { $jsonSchema: schema } });
-});
+// Crée la collection avec son validator, ou met à jour le validator si elle existe déjà (idempotent).
+// À appeler AVANT les index et le seed, qui créeraient sinon les collections sans validator.
+async function ensureValidators(db) {
+  for (const [name, schema] of Object.entries(schemas)) {
+    const validator = { $jsonSchema: schema };
+    try {
+      await db.createCollection(name, { validator });
+    } catch (err) {
+      if (err.codeName !== 'NamespaceExists') throw err;
+      await db.command({ collMod: name, validator });
+    }
+  }
+}
 
-// Les index sont créés par l'application au démarrage (app/src/indexes.js), y compris sur une base existante.
+module.exports = { ensureValidators };

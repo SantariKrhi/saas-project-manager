@@ -1,7 +1,7 @@
-const { GridFSBucket } = require('mongodb');
+const { GridFSBucket, ObjectId } = require('mongodb');
 const { getDb } = require('../db');
+const { DAY_MS: DAY } = require('../lib/constants');
 
-const DAY = 24 * 60 * 60 * 1000;
 const PRIORITY_RANK = { $switch: { branches: [
   { case: { $eq: ['$priority', 'high'] }, then: 0 },
   { case: { $eq: ['$priority', 'medium'] }, then: 1 },
@@ -241,4 +241,30 @@ function forCompany(db, companyId) {
 // Raccourci pour les routes : repository de l'entreprise issue du token.
 const repo = (req) => forCompany(getDb(), req.auth.companyId);
 
-module.exports = { forCompany, repo };
+// Accès AVANT authentification (inscription, connexion) : seul endroit où l'entreprise n'est pas encore connue.
+// Il reste limité à ces deux opérations ; tout le reste passe par forCompany().
+const accounts = {
+  async findForLogin(slug, email) {
+    const db = getDb();
+    const company = await db.collection('companies').findOne({ slug });
+    return company && db.collection('users').findOne({ companyId: company._id, email });
+  },
+  // Pas de transaction sur un serveur MongoDB seul : si l'admin ne peut pas être créé, on retire l'entreprise
+  // pour ne pas laisser d'entreprise sans utilisateur. (Avec le replica set de la Partie II, une transaction conviendrait.)
+  async registerCompany({ name, slug }, admin) {
+    const db = getDb();
+    const now = new Date();
+    const company = { _id: new ObjectId(), name, slug, plan: 'free', createdAt: now };
+    const user = { _id: new ObjectId(), ...admin, companyId: company._id, role: 'admin', createdAt: now };
+    await db.collection('companies').insertOne(company);
+    try {
+      await db.collection('users').insertOne(user);
+    } catch (err) {
+      await db.collection('companies').deleteOne({ _id: company._id });
+      throw err;
+    }
+    return { company, user };
+  },
+};
+
+module.exports = { forCompany, repo, accounts };

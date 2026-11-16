@@ -1,8 +1,8 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const { ObjectId } = require('mongodb');
-const { getDb } = require('../db');
 const { signToken, requireAuth } = require('../middleware/auth');
+const { accounts } = require('../repositories');
+const { HttpError, badRequest, isStr, isEmail, normalizeEmail } = require('../lib/http');
+const { hashPassword, verifyPassword } = require('../lib/passwords');
 
 const router = express.Router();
 
@@ -15,49 +15,36 @@ const publicUser = (u) => ({ id: u._id, companyId: u.companyId, email: u.email,
 // Crée une entreprise et son premier administrateur.
 router.post('/register-company', async (req, res) => {
   const { companyName, email, password, firstName, lastName } = req.body || {};
-  if (![companyName, email, password, firstName, lastName].every((v) => typeof v === 'string' && v.trim())) {
-    return res.status(400).json({ error: 'companyName, email, password, firstName, lastName requis' });
+  if (![companyName, firstName, lastName].every(isStr) || !isEmail(email)) {
+    throw badRequest('companyName, email, password, firstName, lastName requis');
   }
-  if (password.length < 8) return res.status(400).json({ error: 'Mot de passe : 8 caractères minimum' });
+  const passwordHash = await hashPassword(password);
   const slug = slugify(companyName);
-  if (!slug) return res.status(400).json({ error: 'Nom d\'entreprise invalide' });
+  if (!slug) throw badRequest('Nom d\'entreprise invalide');
 
-  const db = getDb();
-  const now = new Date();
-  const company = { _id: new ObjectId(), name: companyName.trim(), slug, plan: 'free', createdAt: now };
   try {
-    await db.collection('companies').insertOne(company);
+    const { company, user } = await accounts.registerCompany({ name: companyName.trim(), slug },
+      { email: normalizeEmail(email), passwordHash, firstName: firstName.trim(), lastName: lastName.trim() });
+    res.status(201).json({ token: signToken(user), company: { id: company._id, name: company.name, slug }, user: publicUser(user) });
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'Entreprise déjà existante' });
+    if (err.code === 11000) throw new HttpError(409, 'Entreprise déjà existante');
     throw err;
   }
-  const user = { _id: new ObjectId(), companyId: company._id, email: email.trim().toLowerCase(),
-    passwordHash: await bcrypt.hash(password, 10), firstName: firstName.trim(), lastName: lastName.trim(),
-    role: 'admin', createdAt: now };
-  await db.collection('users').insertOne(user);
-  res.status(201).json({ token: signToken(user), company: { id: company._id, name: company.name, slug }, user: publicUser(user) });
 });
 
 // L'email n'est unique que par entreprise : on identifie l'entreprise par son slug.
 router.post('/login', async (req, res) => {
   const { company: slug, email, password } = req.body || {};
-  if (![slug, email, password].every((v) => typeof v === 'string' && v)) {
-    return res.status(400).json({ error: 'company, email, password requis' });
-  }
-  const db = getDb();
-  const company = await db.collection('companies').findOne({ slug });
-  const user = company && await db.collection('users').findOne({ companyId: company._id, email: email.trim().toLowerCase() });
+  if (![slug, email, password].every(isStr)) throw badRequest('company, email, password requis');
+  const user = await accounts.findForLogin(slug.trim().toLowerCase(), normalizeEmail(email));
   // Même message dans tous les cas d'échec : on ne révèle pas ce qui existe.
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return res.status(401).json({ error: 'Identifiants invalides' });
-  }
+  if (!user || !(await verifyPassword(password, user.passwordHash))) throw new HttpError(401, 'Identifiants invalides');
   res.json({ token: signToken(user), user: publicUser(user) });
 });
 
-router.get('/me', requireAuth, async (req, res) => {
-  const user = await getDb().collection('users').findOne({ _id: req.auth.userId, companyId: req.auth.companyId });
-  if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
-  res.json(publicUser(user));
+// L'utilisateur a déjà été relu en base par requireAuth.
+router.get('/me', requireAuth, (req, res) => {
+  res.json(publicUser(req.user));
 });
 
 module.exports = router;
