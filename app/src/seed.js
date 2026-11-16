@@ -27,8 +27,8 @@ const DEMO_TASKS = [
   ['Board Kanban en drag & drop', 'doing', 'chloe', 'high', 14, null, 3, ['front'],
     [['Colonnes', true], ['Cartes', true], ['Glisser-déposer', false], ['Calcul des positions', false]]],
   ['Écrire la documentation', 'todo', 'bob', 'medium', 6, null, 10, ['doc']],
-  ['Mettre en place le replica set (Partie II)', 'todo', 'chloe', 'high', 3, null, 20, ['infra']],
-  ['Choisir la clé de sharding', 'todo', null, 'low', 2, null, null, ['bdd']],
+  ['Automatiser les sauvegardes de la base', 'todo', 'chloe', 'high', 3, null, 20, ['infra']],
+  ['Optimiser les requêtes du tableau de bord', 'todo', null, 'low', 2, null, null, ['bdd']],
 ];
 const SITE_TASKS = [
   ['Maquette de la page d’accueil', 'terminé', 'chloe', 'medium', 30, 22, -21, ['design']],
