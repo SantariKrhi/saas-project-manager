@@ -37,7 +37,7 @@ Exemple d'appel à l'API :
 curl -X POST localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"company":"acme","email":"admin@acme.test","password":"demo1234"}'
 ```
 
-Le token renvoyé s'utilise dans l'en-tête `Authorization: Bearer <token>` (liste des routes : `docs/spec-technique.md` § 7).
+Le token renvoyé s'utilise dans l'en-tête `Authorization: Bearer <token>` (liste des routes : spécification technique § 7).
 
 ## Configuration
 
@@ -63,5 +63,5 @@ Tests de l'API : isolation entre entreprises, droits, Kanban, cascades, checklis
 
 ## Documentation
 
-- `docs/spec-fonctionnelle.md` : rôles, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans
-- `docs/spec-technique.md` : architecture, structures JSON, index, isolation, API, préparation réplication / sharding (§ 9), fonctionnalités avancées MongoDB (§ 10)
+- `docs/spec-fonctionnelle.docx` (source : `.md`) : rôles, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans
+- `docs/spec-technique.docx` (source : `.md`) : architecture, structures JSON, index, isolation, API, préparation réplication / sharding (§ 9), fonctionnalités avancées MongoDB (§ 10)

@@ -6,11 +6,9 @@ et la préparation à la réplication / au sharding (Partie II du TD).
 
 ## 1. Architecture
 
-```
-Navigateur ──HTTP──▶ app (Node 20 + Express 5) ──driver MongoDB──▶ mongo (MongoDB 7)
-                      │ sert l'API REST (/api) et l'interface statique (/)
-                      └ MONGO_URI, MONGO_DB, JWT_SECRET, ACTIVITY_TTL_DAYS : variables d'environnement
-```
+Navigateur → **app** (Node 20 + Express 5) → **mongo** (MongoDB 7). Le conteneur `app` sert l'API REST (`/api`) et
+l'interface web statique (`/`), et accède à la base par le driver officiel. Connexion et secrets sont fournis par
+variables d'environnement (`MONGO_URI`, `MONGO_DB`, `JWT_SECRET`, `ACTIVITY_TTL_DAYS`, § 8).
 
 | Élément | Choix |
 |---|---|
@@ -107,7 +105,8 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
   "dueDate": { "$date": "2026-11-01T00:00:00Z" },
   "labels": ["front", "urgent"],
   "comments": [
-    { "userId": { "$oid": "6ad10539b1611e3d4b131ebb" }, "text": "À finir pour jeudi", "at": { "$date": "2026-10-15T10:30:00Z" } }
+    { "userId": { "$oid": "6ad10539b1611e3d4b131ebb" }, "text": "À finir pour jeudi",
+      "at": { "$date": "2026-10-15T10:30:00Z" } }
   ],
   "checklist": [
     { "_id": { "$oid": "6ad10539b1611e3d4b131ec1" }, "text": "Formulaire", "done": true },
@@ -115,7 +114,8 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
   ],
   "attachments": [
     { "_id": { "$oid": "6ad10539b1611e3d4b131ec3" }, "name": "maquette.png", "size": 48213,
-      "contentType": "image/png", "uploadedBy": { "$oid": "6ad10539b1611e3d4b131ebd" }, "at": { "$date": "2026-10-16T14:00:00Z" } }
+      "contentType": "image/png", "uploadedBy": { "$oid": "6ad10539b1611e3d4b131ebd" },
+      "at": { "$date": "2026-10-16T14:00:00Z" } }
   ],
   "completedAt": null,
   "createdAt": { "$date": "2026-10-15T09:00:00Z" },
@@ -143,7 +143,8 @@ datée y échappe au statut « en retard »). `memberIds` : utilisateurs assign�
   "projectId": { "$oid": "6ad10539b1611e3d4b131ebc" },
   "userId": { "$oid": "6ad10539b1611e3d4b131ebd" },
   "type": "task.moved",
-  "data": { "taskId": { "$oid": "6ad10539b1611e3d4b131ebe" }, "title": "Développer la page de login", "from": "doing", "to": "review" },
+  "data": { "taskId": { "$oid": "6ad10539b1611e3d4b131ebe" }, "title": "Développer la page de login",
+            "from": "doing", "to": "review" },
   "at": { "$date": "2026-10-16T09:12:00Z" }
 }
 ```
@@ -177,14 +178,14 @@ Collections gérées par le driver (`GridFSBucket`, bucket `attachments`). Le fi
 
 ### 2.7 Relations
 
-```
-companies 1 ──── * users
-companies 1 ──── * projects ── * ──┐ (projects.memberIds)
-companies 1 ──── * tasks           └── users
-projects  1 ──── * tasks      tasks.assigneeId ──▶ users
-projects  1 ──── * activities
-tasks     1 ──── * attachments.files (GridFS, via metadata.taskId)
-```
+| Relation | Cardinalité | Portée par |
+|---|---|---|
+| Entreprise → utilisateurs, projets, tâches, activités | 1 – n | `companyId` dans chaque document |
+| Projet → tâches | 1 – n | `tasks.projectId` |
+| Projet ↔ utilisateurs (membres) | n – n | `projects.memberIds` |
+| Tâche → utilisateur assigné | n – 0..1 | `tasks.assigneeId` |
+| Projet → activités | 1 – n | `activities.projectId` |
+| Tâche → fichiers GridFS | 1 – n | `attachments.files.metadata.taskId` |
 
 ## 3. Choix de modélisation : références ou imbrication
 
@@ -213,7 +214,7 @@ Contrepartie assumée : pas de contraintes référentielles. Elles sont assurée
 | `tasks` | `{ companyId: 1, projectId: 1, status: 1, position: 1 }` | Board Kanban : tâches d'un projet, par colonne, triées |
 | `tasks` | `{ companyId: 1, assigneeId: 1, dueDate: 1 }` | « Mes tâches » : tâches d'une personne par échéance |
 | `tasks` | `{ companyId: 1, projectId: 1, dueDate: 1 }` | Calendrier : échéances d'un projet sur une plage de dates |
-| `tasks` | `{ companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" }` (français, pondéré) | Recherche plein texte (§ 10.6) |
+| `tasks` | `{ companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" }` (français, pondéré) | Recherche plein texte (§ 10.5) |
 | `activities` | `{ companyId: 1, projectId: 1, at: -1 }` | Journal d'un projet, du plus récent au plus ancien |
 | `activities` | `{ at: 1 }` **TTL** (`expireAfterSeconds` = 90 jours) | Purge automatique des entrées anciennes (§ 10.3) |
 | `attachments.files` | `{ "metadata.companyId": 1, "metadata.taskId": 1 }` | Fichiers d'une tâche (suppressions en cascade) |
@@ -379,85 +380,50 @@ sous-pipelines sur le même jeu de tâches (`repositories/index.js`, `tasks.stat
 ```js
 [
   { $match: { companyId, projectId: { $in: projectIds } } },
-  // jointure limitée à l'entreprise : même un $lookup ne peut pas sortir du périmètre
-  { $lookup: { from: "projects", let: { id: "$projectId" }, as: "p", pipeline: [
-      { $match: { companyId, $expr: { $eq: ["$_id", "$$id"] } } },
-      { $project: { name: 1, last: { $arrayElemAt: ["$columns", -1] } } } ] } },
-  { $set: { p: { $first: "$p" } } },
-  { $set: { done: { $eq: ["$status", "$p.last"] } } },          // terminée = dans la dernière colonne
-  { $set: { overdue: { $and: [{ $not: ["$done"] }, { $lt: ["$dueDate", today] }, ...] } } },
+  { $lookup: { from: "projects", /* limité à companyId */ ... } },   // nom et dernière colonne
+  { $set: { done: { $eq: ["$status", "$p.last"] }, overdue: ... } }, // terminée = dernière colonne
   { $facet: {
-      totals:          [{ $group: { _id: null, total: { $sum: 1 }, done: ..., overdue: ..., unassigned: ... } }],
-      byStatus:        [{ $group: { _id: "$status", count: { $sum: 1 } } }],
-      byPriority:      [{ $group: { _id: "$priority", count: { $sum: 1 } } }],
-      byProject:       [{ $group: { _id: "$projectId", name: { $first: "$p.name" }, total: ..., done: ... } }],
-      byAssignee:      [{ $group: { _id: "$assigneeId", ... } }, { $lookup: { from: "users", ... } }],
-      createdPerWeek:  [{ $match: { createdAt: { $gte: since } } },
-                        { $group: { _id: { $dateTrunc: { date: "$createdAt", unit: "week", startOfWeek: "monday",
-                                                          timezone: "Europe/Paris" } }, count: { $sum: 1 } } }],
-      completedPerWeek:[ /* idem sur completedAt */ ]
+      totals: [...], byStatus: [...], byPriority: [...], byProject: [...], byAssignee: [...],
+      createdPerWeek: [{ $group: { _id: { $dateTrunc: { date: "$createdAt", unit: "week",
+                                                     timezone: "Europe/Paris" } }, ... } }],
+      completedPerWeek: [ /* idem sur completedAt */ ]
   } }
 ]
 ```
 
-« Mes tâches » utilise le même principe : `$match` sur l'assigné (index `companyId, assigneeId, dueDate`), `$lookup`
-du projet, puis un tri calculé en base (non terminées d'abord, échéance croissante avec les tâches sans échéance
-en dernier, puis priorité via `$switch`).
+Le `$lookup` filtre lui aussi sur `companyId` : même une jointure ne peut pas sortir du périmètre de l'entreprise.
+« Mes tâches » suit le même principe (`$match` sur l'assigné, `$lookup` du projet) avec un tri calculé en base :
+non terminées d'abord, échéance croissante (sans échéance en dernier), puis priorité via `$switch`.
 
 ### 10.3 Journal d'activité : index TTL
 
-```js
-db.activities.createIndex({ at: 1 }, { expireAfterSeconds: 90 * 24 * 3600, name: "activities_ttl" })
-```
-
-Un processus interne de MongoDB supprime les entrées dont `at` est plus ancien que 90 jours (passage environ
-toutes les 60 s) : aucune tâche planifiée à écrire, et la collection ne grossit pas indéfiniment. La durée est
-réglable par `ACTIVITY_TTL_DAYS`. Lecture paginée par **curseur** (`?before=<date>`) plutôt que par `skip`, qui
-resterait coûteux sur un long historique.
+Avec l'index TTL `{ at: 1 }` (§ 4), un processus interne de MongoDB supprime les entrées plus anciennes que
+`ACTIVITY_TTL_DAYS` (90 jours par défaut, passage environ toutes les 60 s) : aucune tâche planifiée à écrire, et la
+collection ne grossit pas indéfiniment. La lecture est paginée par **curseur** (`?before=<date>`) plutôt que par
+`skip`, qui resterait coûteux sur un long historique.
 
 ### 10.4 Pièces jointes : GridFS
 
-Les fichiers sont stockés dans MongoDB via `GridFSBucket` : découpés en morceaux de 255 Ko (`attachments.chunks`),
-décrits dans `attachments.files`. Avantages ici : une seule base à sauvegarder et à répliquer (Partie II),
-pas de volume disque partagé entre instances de l'application, isolation par `metadata.companyId`, et suppression
-en cascade par requête sur les métadonnées. Le téléchargement est diffusé en flux (`stream.pipeline`) sans
-charger le fichier entier en mémoire.
+Les fichiers sont stockés dans MongoDB via `GridFSBucket` (§ 2.6). Avantages ici : une seule base à sauvegarder et
+à répliquer (Partie II), pas de volume disque partagé entre instances de l'application, isolation par
+`metadata.companyId`, et suppression en cascade par requête sur les métadonnées. Le téléchargement est diffusé en
+flux (`stream.pipeline`) sans charger le fichier entier en mémoire.
 
-### 10.5 Calendrier : requête par plage sur un index
+### 10.5 Recherche plein texte : index texte composé
 
-`GET /projects/:id/tasks?dueFrom=2026-10-26&dueTo=2026-12-07` → `{ companyId, projectId, dueDate: { $gte, $lt } }`,
-servie par l'index `{ companyId: 1, projectId: 1, dueDate: 1 }` (IXSCAN borné, voir § 4).
-
-### 10.6 Recherche plein texte : index texte composé
-
-```js
-db.tasks.createIndex(
-  { companyId: 1, title: "text", labels: "text", description: "text", "checklist.text": "text", "comments.text": "text" },
-  { name: "tasks_text", default_language: "french",
-    weights: { title: 10, labels: 5, description: 3, "checklist.text": 2, "comments.text": 1 } }
-)
-```
-
-```js
-db.tasks.aggregate([
-  { $match: { companyId, projectId: { $in: projectIds }, $text: { $search: "documentation" } } },
-  { $set: { score: { $meta: "textScore" } } },
-  { $sort: { score: -1 } }, { $limit: 20 },
-  { $lookup: /* nom du projet, limité à l'entreprise */ }
-])
-```
+L'index `tasks_text` (§ 4) couvre titre, étiquettes, description, checklist et commentaires ; la recherche est un
+`$match` avec `$text`, trié par `{ $meta: "textScore" }` et limité à 20 résultats.
 
 - **Langue française** : racinisation (« documentations » trouve « documentation »), mots vides ignorés (« la », « de »),
   insensibilité à la casse et aux accents (« ecrire » trouve « Écrire »).
-- **Pondération** : un mot du titre pèse 10 fois plus qu'un mot de commentaire ; les résultats sont triés par le
-  score de pertinence calculé par MongoDB (`$meta: "textScore"`).
+- **Pondération** : `title` 10, `labels` 5, `description` 3, `checklist.text` 2, `comments.text` 1 ; les résultats
+  sont triés par le score de pertinence calculé par MongoDB.
 - **Index composé avec `companyId` en préfixe** : MongoDB **exige** alors une égalité sur `companyId` dans chaque
   recherche. Une requête `$text` sans entreprise est refusée par la base (`NoQueryExecutionPlans`, vérifié) :
-  l'isolation est garantie par l'index lui-même, en plus des repositories. Le préfixe rend aussi l'index compatible
-  avec un sharding par `companyId`.
-- Un seul index texte est possible par collection : il couvre donc tous les champs utiles d'un coup.
-- Limite : pas de recherche par préfixe (« docu » ne trouve pas « documentation ») ni de tolérance aux fautes ;
-  ce serait le rôle d'Atlas Search / Lucene, hors du périmètre d'un MongoDB auto-hébergé.
+  l'isolation est garantie par l'index lui-même, en plus des repositories, et l'index reste compatible avec un
+  sharding par `companyId`.
+- Limite : un seul index texte par collection, pas de recherche par préfixe (« docu » ne trouve pas
+  « documentation ») ni de tolérance aux fautes ; ce serait le rôle d'Atlas Search, hors d'un MongoDB auto-hébergé.
 
 ## 11. Limites connues
 
