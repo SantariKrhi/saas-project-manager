@@ -63,5 +63,5 @@ Tests de l'API : isolation entre entreprises, droits, Kanban, cascades, checklis
 
 ## Documentation
 
-- `docs/spec-fonctionnelle.docx` (copie texte : `.md`) : rôles, besoins, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans, exigences non fonctionnelles
-- `docs/spec-technique.docx` (copie texte : `.md`) : architecture, structures JSON, index, isolation, API, préparation à la réplication et au sharding, fonctionnalités avancées MongoDB
+- `docs/spec-fonctionnelle.docx` : rôles, besoins, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans, exigences non fonctionnelles
+- `docs/spec-technique.docx` : architecture, structures JSON, index, isolation, API, préparation à la réplication et au sharding, fonctionnalités avancées MongoDB
