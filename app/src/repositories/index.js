@@ -254,7 +254,7 @@ const accounts = {
   async registerCompany({ name, slug }, admin) {
     const db = getDb();
     const now = new Date();
-    const company = { _id: new ObjectId(), name, slug, plan: 'free', createdAt: now };
+    const company = { _id: new ObjectId(), name, slug, createdAt: now };
     const user = { _id: new ObjectId(), ...admin, companyId: company._id, role: 'admin', createdAt: now };
     await db.collection('companies').insertOne(company);
     try {

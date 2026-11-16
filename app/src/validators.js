@@ -10,7 +10,6 @@ const schemas = {
     properties: {
       name: { bsonType: 'string', minLength: 1 },
       slug: { bsonType: 'string', pattern: '^[a-z0-9-]+$' },
-      plan: { enum: ['free', 'pro'] },
       createdAt: { bsonType: 'date' },
     },
   },
@@ -36,7 +35,6 @@ const schemas = {
       description: { bsonType: 'string' },
       memberIds: { bsonType: 'array', items: { bsonType: 'objectId' } },
       columns: { bsonType: 'array', minItems: 1, items: { bsonType: 'string' } },
-      createdBy: { bsonType: 'objectId' },
       createdAt: { bsonType: 'date' },
     },
   },

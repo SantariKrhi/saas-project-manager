@@ -46,7 +46,7 @@ async function seed(db) {
 
   for (const [name, slug] of [['Acme', 'acme'], ['Globex', 'globex']]) {
     const companyId = new ObjectId();
-    await db.collection('companies').insertOne({ _id: companyId, name, slug, plan: 'free', createdAt: daysAgo(45) });
+    await db.collection('companies').insertOne({ _id: companyId, name, slug, createdAt: daysAgo(45) });
 
     const user = (first, last, email, role) => ({ _id: new ObjectId(), companyId, email: `${email}@${slug}.test`, passwordHash,
       firstName: first, lastName: last, role, createdAt: daysAgo(45) });
@@ -67,7 +67,7 @@ async function seed(db) {
 
     for (const p of projects) {
       await db.collection('projects').insertOne({ _id: p._id, companyId, name: p.name, description: p.description,
-        memberIds, columns: p.columns, createdBy: people.alice._id, createdAt: p.createdAt });
+        memberIds, columns: p.columns, createdAt: p.createdAt });
 
       const positions = {};
       const activities = [];

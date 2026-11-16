@@ -66,7 +66,7 @@ router.post('/', requireAdmin, async (req, res) => {
   const members = await parseMemberIds(req, memberIds);
   if (!members.some((m) => m.equals(req.auth.userId))) members.push(req.auth.userId);
   const project = await repo(req).projects.create({ name: name.trim(), description,
-    columns: parseColumns(columns), memberIds: members, createdBy: req.auth.userId });
+    columns: parseColumns(columns), memberIds: members });
   await logActivity(req, project._id, 'project.created', { name: project.name });
   res.status(201).json(project);
 });

@@ -6,7 +6,7 @@ const { HttpError, badRequest, isStr } = require('../lib/http');
 const router = express.Router();
 router.use(requireAuth);
 
-const view = (c) => ({ id: c._id, name: c.name, slug: c.slug, plan: c.plan, createdAt: c.createdAt });
+const view = (c) => ({ id: c._id, name: c.name, slug: c.slug, createdAt: c.createdAt });
 
 router.get('/', async (req, res) => {
   res.json(view(await repo(req).company.get()));
