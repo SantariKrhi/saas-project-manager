@@ -5,3 +5,6 @@ node_modules/
 .idea/
 .vscode/
 *.zip
+
+# Fichiers de verrou Office (document ouvert dans Word)
+~$*
