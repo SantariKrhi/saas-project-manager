@@ -6,7 +6,7 @@ Outil de gestion de projet multi-entreprises (type Trello / ClickUp) basé sur M
 - Kanban en glisser-déposer, colonnes personnalisables, priorité, échéance, étiquettes, commentaires
 - Checklist dans les tâches, pièces jointes (stockées dans MongoDB via GridFS)
 - Calendrier des échéances, vue « Mes tâches », journal d'activité (purgé par index TTL)
-- Tableau de bord statistique (aggregation pipeline), recherche plein texte en français (raccourci « / »)
+- Tableau de bord statistique (pipeline d'agrégation MongoDB), recherche plein texte en français (raccourci « / »)
 - Thème clair / sombre, interface adaptée au mobile
 
 ## Lancement
