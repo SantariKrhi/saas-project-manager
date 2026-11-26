@@ -16,7 +16,7 @@ export function openModal({ title, sub, body, foot, variant, onClose }) {
     h('div', { class: `modal${variant ? ` ${variant}-panel` : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
       h('div', { class: 'modal-head' },
         h('div', {}, h('h2', { id: titleId }, title), sub ? h('div', { class: 'sub' }, sub) : null),
-        h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Fermer', onclick: () => close() }, icon('x'))),
+        h('button', { class: 'btn ghost icon-only danger-ghost', type: 'button', 'aria-label': 'Fermer', onclick: () => close() }, icon('x'))),
       h('div', { class: 'modal-body' }, body),
       foot ? h('div', { class: 'modal-foot' }, foot) : null));
   document.addEventListener('keydown', onKey);
