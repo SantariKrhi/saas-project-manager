@@ -2,6 +2,8 @@
 
 Outil de gestion de projet multi-entreprises (type Trello / ClickUp) basé sur MongoDB.
 
+Projet réalisé en binôme par Louka Carpentier et Elias Aïssou--Douspis pour le module R5.10 Nouveau paradigme de base de données.
+
 - Entreprises, utilisateurs (admin / membre), projets, tâches, avec isolation stricte entre entreprises
 - Kanban en glisser-déposer, colonnes personnalisables, priorité, échéance, étiquettes, commentaires
 - Checklist dans les tâches, pièces jointes (stockées dans MongoDB via GridFS)
