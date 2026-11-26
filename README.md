@@ -63,7 +63,7 @@ Tests de l'API : isolation entre entreprises, droits, Kanban, cascades, checklis
 
 ## Documentation
 
-Dans `docs/`, en PDF dans l'archive rendue (les sources Word sont dans le dépôt).
+Les spécifications sont en PDF dans `docs/`. Les fichiers Word du même nom en sont les sources modifiables.
 
-- `spec-fonctionnelle` : rôles, besoins, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans, exigences non fonctionnelles
-- `spec-technique` : architecture, structures JSON, index, isolation, API, préparation à la réplication et au sharding, fonctionnalités avancées MongoDB
+- [Spécification fonctionnelle](docs/spec-fonctionnelle.pdf) : rôles, besoins, fonctionnalités (obligatoires et additionnelles), règles de gestion, écrans, exigences non fonctionnelles
+- [Spécification technique](docs/spec-technique.pdf) : architecture, structures JSON, index, isolation, API, préparation à la réplication et au sharding, fonctionnalités avancées MongoDB

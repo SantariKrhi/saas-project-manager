@@ -1,7 +1,8 @@
 * text=auto eol=lf
 *.docx binary
+*.pdf binary
 
-# Exclus de l'archive rendue (git archive) : réglages git, et sources Word des specs (livrées en PDF)
+# Exclus des archives (git archive, « Download ZIP » de GitHub) : réglages git, et sources Word des specs (livrées en PDF)
 .gitignore export-ignore
 .gitattributes export-ignore
 docs/*.docx export-ignore
