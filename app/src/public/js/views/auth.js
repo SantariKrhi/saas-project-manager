@@ -1,5 +1,5 @@
 // Écran de connexion / création d'entreprise.
-import { h, field, mount } from '../dom.js';
+import { h, field, mount, setChildren } from '../dom.js';
 import { icon } from '../icons.js';
 import { api } from '../api.js';
 import { session, store } from '../state.js';
@@ -66,7 +66,7 @@ export function renderAuth() {
     const tab = (key, label) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(mode === key),
       onclick: () => { if (mode !== key) { mode = key; draw(); } } }, label);
 
-    box.replaceChildren(h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Mode' },
+    setChildren(box, h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Mode' },
       tab('login', 'Connexion'), tab('register', 'Nouvelle entreprise')), form, demo);
   }
 

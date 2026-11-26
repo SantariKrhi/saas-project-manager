@@ -1,6 +1,6 @@
 // Fenêtre d'édition d'une tâche : champs principaux, puis trois sections indépendantes
 // (checklist, pièces jointes, commentaires) qui enregistrent chacune leurs changements immédiatement.
-import { h, field } from '../dom.js';
+import { h, field, setChildren } from '../dom.js';
 import { icon } from '../icons.js';
 import { api, request, fetchAttachment } from '../api.js';
 import { PRIO, fullName, formatSize, relTime } from '../format.js';
@@ -88,7 +88,7 @@ function checklistSection(task, { reload }) {
     const list = task.checklist || [];
     const done = list.filter((i) => i.done).length;
     const pct = list.length ? Math.round((done / list.length) * 100) : 0;
-    box.replaceChildren(
+    setChildren(box,
       h('div', { class: 'section-head' }, h('h3', {}, 'Checklist'), list.length ? h('span', { class: 'muted' }, `${done}/${list.length} · ${pct} %`) : null),
       list.length ? h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Avancement de la checklist', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) },
         h('span', { style: `width:${pct}%` })) : null,
@@ -158,7 +158,7 @@ function attachmentsSection(task, { usersById, reload }) {
 
   function draw() {
     const list = task.attachments || [];
-    box.replaceChildren(
+    setChildren(box,
       h('div', { class: 'section-head' }, h('h3', {}, list.length ? `Pièces jointes (${list.length})` : 'Pièces jointes')),
       list.length ? h('ul', { class: 'files' }, list.map((a) => {
         const isImage = a.contentType.startsWith('image/');

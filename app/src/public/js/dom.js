@@ -15,6 +15,11 @@ export function h(tag, props, ...children) {
   return el;
 }
 
+// Remplace les enfants d'un élément en ignorant null / false (replaceChildren les écrirait en texte).
+export function setChildren(el, ...children) {
+  el.replaceChildren(...children.flat(Infinity).filter((c) => c != null && c !== false));
+}
+
 let idCounter = 0;
 export const uid = (prefix = 'f') => `${prefix}${++idCounter}`;
 
